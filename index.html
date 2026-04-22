@@ -1235,11 +1235,27 @@ async function api(action, data = {}) {
   if (!entry.public && !verifyAuth()) return { ok: false, error: 'Unauthorized' };
   if (entry.role && !hasRole(entry.role)) return { ok: false, error: 'Insufficient permissions' };
   try {
-    return await entry.fn(data);
+    const result = await entry.fn(data);
+    // Mark data changed for write operations (check-in, check-out, register, etc.)
+    if (result.ok && isWriteAction(action)) {
+      markDataChanged();
+    }
+    return result;
   } catch (err) {
     console.error('API error:', action, err);
     return { ok: false, error: err.message || 'Internal error' };
   }
+}
+
+// Helper: determine if an action modifies data
+function isWriteAction(action) {
+  const writeActions = [
+    'registerKid', 'updateKid', 'blockKid', 'unblockKid', 'uploadPhoto',
+    'addSubscription', 'checkIn', 'checkOut', 'voidCheckIn', 'voidCheckOut',
+    'createUser', 'deactivateUser', 'changePassword',
+    'addSchool', 'deleteSchool', 'addGrade', 'deleteGrade'
+  ];
+  return writeActions.includes(action);
 }
 
 
@@ -1509,14 +1525,41 @@ async function restoreFromDrive(fileId) {
 }
 
 /* ---------- Auto-backup scheduler ----------
-   Runs at most once per 24h. Triggered lazily on user activity.
+   Runs every 10 minutes between 8am-midnight, only if data changed.
 ------------------------------------------- */
-async function maybeRunAutoBackup() {
+let dataChangedSinceLastBackup = false;
+let backupIntervalTimer = null;
+
+function markDataChanged() {
+  dataChangedSinceLastBackup = true;
+}
+
+async function runScheduledBackup() {
+  // Check: Drive connected?
   if (!localStorage.getItem('aq_drive_connected')) return;
-  const last = parseInt(localStorage.getItem('aq_last_backup_ms') || '0');
-  if (Date.now() - last < 23 * 3600 * 1000) return;
+  
+  // Check: Within operating hours (8am - midnight)?
+  const now = new Date();
+  const hour = now.getHours();
+  if (hour < 8 || hour >= 24) return; // Outside 8am-midnight window
+  
+  // Check: Data changed since last backup?
+  if (!dataChangedSinceLastBackup) return;
+  
+  // All checks passed — backup now
   const ok = await backupToDrive(true);
-  if (ok) localStorage.setItem('aq_last_backup_ms', String(Date.now()));
+  if (ok) {
+    dataChangedSinceLastBackup = false;
+    localStorage.setItem('aq_last_backup_ms', String(Date.now()));
+  }
+}
+
+function startBackupScheduler() {
+  if (backupIntervalTimer) return; // Already running
+  // Run every 10 minutes (600,000ms)
+  backupIntervalTimer = setInterval(runScheduledBackup, 10 * 60 * 1000);
+  // Also run once immediately on start
+  runScheduledBackup();
 }
 
 function updateBackupIndicator() {
@@ -1530,10 +1573,12 @@ function updateBackupIndicator() {
     return;
   }
   const ageMs = Date.now() - new Date(last).getTime();
+  const ageMin = Math.floor(ageMs / 60000);
   const ageH = Math.floor(ageMs / 3600000);
   const ageD = Math.floor(ageH / 24);
   let label;
-  if (ageH < 1) label = 'backed up <1h ago';
+  if (ageMin < 1) label = 'backed up just now';
+  else if (ageMin < 60) label = `backed up ${ageMin}m ago`;
   else if (ageH < 24) label = `backed up ${ageH}h ago`;
   else label = `backed up ${ageD}d ago`;
   el.textContent = (method === 'drive' ? '☁ ' : '💾 ') + label;
@@ -1592,8 +1637,8 @@ async function enterApp() {
   const s = await api('getSchools'); if (s.ok) schoolsCache = s.schools || [];
   const g = await api('getGrades');  if (g.ok) gradesCache  = g.grades  || [];
   go('dashboard');
-  // Fire-and-forget auto backup
-  maybeRunAutoBackup();
+  // Start the 10-minute backup scheduler
+  startBackupScheduler();
 }
 
 function go(page) {
@@ -2651,7 +2696,7 @@ pageRenderers.admin = function() {
           : `<button class="btn btn-primary btn-sm" onclick="setupDrive()">☁ Connect Google Drive</button>`}
       </div>
       <div class="text-xs text-mute mt-12">
-        Automatic Drive backup runs once per day when you open the app (if Drive is connected).
+        Automatic Drive backup runs every 10 minutes (8am-midnight) when data changes (if Drive is connected).
       </div>
     </div>
 
