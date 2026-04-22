@@ -157,6 +157,7 @@
 
   .badge { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
   .badge-blue   { background: #dbeafe; color: #1e40af; }
+  .badge-pink   { background: #fce7f3; color: #9d174d; }
   .badge-amber  { background: #fef3c7; color: #92400e; }
   .badge-green  { background: #d1fae5; color: #065f46; }
   .badge-red    { background: #fee2e2; color: #991b1b; }
@@ -361,6 +362,21 @@ function ageFromDob(dob) {
   const m = now.getMonth() - d.getMonth();
   if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
   return age;
+}
+function genderBadge(gender) {
+  if (!gender) return '';
+  const cls = gender === 'Male' ? 'badge-blue' : gender === 'Female' ? 'badge-pink' : 'badge-gray';
+  const icon = gender === 'Male' ? '♂' : gender === 'Female' ? '♀' : '';
+  return `<span class="badge ${cls}">${icon} ${esc(gender)}</span>`;
+}
+function genderDot(gender) {
+  if (!gender) return '';
+  const color = gender === 'Male' ? '#3b82f6' : gender === 'Female' ? '#ec4899' : '#cbd5e1';
+  const icon = gender === 'Male' ? '♂' : gender === 'Female' ? '♀' : '';
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${color};color:white;font-size:12px;font-weight:700;flex-shrink:0;" title="${esc(gender)}">${icon}</span>`;
+}
+function genderBorderColor(gender) {
+  return gender === 'Male' ? '#3b82f6' : gender === 'Female' ? '#ec4899' : '';
 }
 
 /* ---------- Clock ---------- */
@@ -576,14 +592,16 @@ function verifyAuth() {
 
 /* ---------- Kids ---------- */
 async function actRegisterKid(d) {
-  const required = ['firstName','lastName','dateOfBirth','school','grade','parentName','phone'];
+  const required = ['firstName','lastName','dateOfBirth','gender','school','grade','parentName','phone'];
   for (const f of required) if (!trim(d[f])) return { ok: false, error: 'Missing field: ' + f };
+  if (d.gender !== 'Male' && d.gender !== 'Female') return { ok: false, error: 'Gender must be Male or Female' };
   const kidId = uid('KID');
   const fullName = trim(d.firstName) + ' ' + trim(d.lastName);
   await dbPut('kids', {
     KidID: kidId,
     FirstName: trim(d.firstName), LastName: trim(d.lastName), FullName: fullName,
-    DateOfBirth: trim(d.dateOfBirth), School: trim(d.school), Grade: trim(d.grade),
+    DateOfBirth: trim(d.dateOfBirth), Gender: trim(d.gender),
+    School: trim(d.school), Grade: trim(d.grade),
     Address: trim(d.address), ParentName: trim(d.parentName),
     Phone: trim(d.phone), EmergencyContact: trim(d.emergencyContact),
     Notes: trim(d.notes), Status: 'Active',
@@ -597,10 +615,12 @@ async function actRegisterKid(d) {
 async function actUpdateKid(d) {
   const kid = await dbGet('kids', trim(d.kidId));
   if (!kid) return { ok: false, error: 'Kid not found' };
+  if (d.gender && d.gender !== 'Male' && d.gender !== 'Female') return { ok: false, error: 'Gender must be Male or Female' };
   const setIf = (key, field) => { if (d[key] !== undefined) kid[field] = trim(d[key]); };
   setIf('firstName','FirstName'); setIf('lastName','LastName');
   kid.FullName = trim(kid.FirstName) + ' ' + trim(kid.LastName);
-  setIf('dateOfBirth','DateOfBirth'); setIf('school','School'); setIf('grade','Grade');
+  setIf('dateOfBirth','DateOfBirth'); setIf('gender','Gender');
+  setIf('school','School'); setIf('grade','Grade');
   setIf('address','Address'); setIf('parentName','ParentName');
   setIf('phone','Phone'); setIf('emergencyContact','EmergencyContact');
   setIf('notes','Notes');
@@ -642,7 +662,8 @@ async function actSearchKids({ query }) {
       out.push({
         KidID: k.KidID, FullName: k.FullName,
         ParentName: k.ParentName, Phone: k.Phone,
-        Status: k.Status, PhotoData: k.PhotoData || ''
+        Status: k.Status, PhotoData: k.PhotoData || '',
+        Gender: k.Gender || ''
       });
       if (out.length >= 20) break;
     }
@@ -814,11 +835,12 @@ async function actGetLiveKids() {
       Status: rem <= 0 ? 'Red' : rem <= 15 ? 'Warning' : 'Green'
     });
   }
-  // Enrich with FullName + PhotoData (one read per unique kid)
+  // Enrich with FullName + PhotoData + Gender (one read per unique kid)
   for (const row of live) {
     const k = await dbGet('kids', row.KidID);
     row.FullName = k ? k.FullName : 'Unknown';
     row.PhotoData = k ? (k.PhotoData || '') : '';
+    row.Gender = k ? (k.Gender || '') : '';
   }
   return { ok: true, kids: live };
 }
@@ -1148,7 +1170,7 @@ function toCsv(header, rows) {
 
 async function actExportKids() {
   const all = await dbAll('kids');
-  const header = ['KidID','FirstName','LastName','FullName','DateOfBirth','School','Grade','Address','ParentName','Phone','EmergencyContact','Notes','Status','LoyaltyPoints','CreatedAt'];
+  const header = ['KidID','FirstName','LastName','FullName','DateOfBirth','Gender','School','Grade','Address','ParentName','Phone','EmergencyContact','Notes','Status','LoyaltyPoints','CreatedAt'];
   await audit('EXPORT_KIDS', '', '');
   return { ok: true, csv: toCsv(header, all) };
 }
@@ -1783,7 +1805,7 @@ function renderLiveGrid(container) {
     const remTxt = k.Remaining > 0 ? `${k.Remaining}m left` : `${Math.abs(k.Remaining)}m over`;
     return `
       <div class="live-card ${k.Status}">
-        <div class="live-name">${esc(k.FullName)}</div>
+        <div class="live-name" style="display:flex;align-items:center;gap:8px;">${genderDot(k.Gender)}<span>${esc(k.FullName)}</span></div>
         <div class="live-time mono">${k.Elapsed}m in — ${remTxt}</div>
         <div class="live-progress"><div class="live-progress-bar" style="width:${pct}%;background:${barColor}"></div></div>
       </div>`;
@@ -1854,7 +1876,7 @@ async function runCheckioSearch(q) {
     <div class="row" style="padding:10px;border-bottom:1px solid var(--line);cursor:pointer;" onclick="openEntryModal('${esc(k.KidID)}','${esc(k.FullName)}')">
       ${k.PhotoData ? `<img class="photo-thumb" src="${esc(k.PhotoData)}" onerror="this.style.display='none'">` : '<span class="photo-thumb"></span>'}
       <div style="flex:1;">
-        <div class="fw-6">${esc(k.FullName)}</div>
+        <div class="fw-6" style="display:flex;align-items:center;gap:8px;">${genderDot(k.Gender)}<span>${esc(k.FullName)}</span></div>
         <div class="text-xs text-mute">${esc(k.ParentName)} · <span class="mono">${esc(k.Phone)}</span></div>
       </div>
       ${k.Status === 'Blocked' ? '<span class="badge badge-red">Blocked</span>' : ''}
@@ -1881,7 +1903,7 @@ async function refreshCheckioLive() {
     return `
       <div class="row" style="padding:10px;border-bottom:1px solid var(--line);cursor:pointer;" onclick="openCheckoutModal('${esc(k.SessionID)}','${esc(k.FullName)}',${k.Elapsed})">
         <div style="flex:1;">
-          <div class="fw-6">${esc(k.FullName)}</div>
+          <div class="fw-6" style="display:flex;align-items:center;gap:8px;">${genderDot(k.Gender)}<span>${esc(k.FullName)}</span></div>
           <div class="text-xs text-mute mono">${k.Elapsed}m elapsed</div>
         </div>
         <span class="badge ${badgeCls}">${lbl}</span>
@@ -2047,6 +2069,13 @@ pageRenderers.register = function() {
             <input name="dateOfBirth" type="date" required onchange="updateGradeOptions()">
             <div class="hint">Must be between 1 month and 13 years old.</div>
           </div>
+          <div class="field"><label>Gender <span class="required">*</span></label>
+            <select name="gender" required>
+              <option value="">— Select —</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+            </select>
+          </div>
           <div class="field">
             <label>Photo (optional)</label>
             <input name="photo" type="file" accept="image/*" capture="environment" onchange="handleRegPhoto(event)">
@@ -2178,7 +2207,8 @@ async function submitRegister(e) {
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Registering...';
   const regRes = await api('registerKid', {
     firstName: data.firstName, lastName: data.lastName,
-    dateOfBirth: data.dateOfBirth, school: data.school, grade: data.grade,
+    dateOfBirth: data.dateOfBirth, gender: data.gender,
+    school: data.school, grade: data.grade,
     address: data.address, parentName: data.parentName,
     phone, emergencyContact: emergency, notes: data.notes
   });
@@ -2213,7 +2243,7 @@ function overrideDupAndSubmit() {
    PAGE 4: ALL KIDS (Admin+)
    ================================================================== */
 
-let allKidsFilters = { search: '', sub: 'All', status: 'All', sort: 'Newest' };
+let allKidsFilters = { search: '', sub: 'All', status: 'All', gender: 'All', sort: 'Newest' };
 
 pageRenderers.allkids = function() {
   $('#page-allkids').innerHTML = `
@@ -2230,6 +2260,11 @@ pageRenderers.allkids = function() {
         <option value="All">All statuses</option>
         <option value="Active">Active</option>
         <option value="Blocked">Blocked</option>
+      </select>
+      <select id="ak-gender">
+        <option value="All">All genders</option>
+        <option value="Male">♂ Male</option>
+        <option value="Female">♀ Female</option>
       </select>
       <select id="ak-sort">
         <option value="Newest">Newest first</option>
@@ -2254,14 +2289,15 @@ pageRenderers.allkids = function() {
   $('#ak-search').addEventListener('input', e => { allKidsFilters.search = e.target.value; applyAllKidsFilters(); });
   $('#ak-sub').addEventListener('change', e => { allKidsFilters.sub = e.target.value; applyAllKidsFilters(); });
   $('#ak-status').addEventListener('change', e => { allKidsFilters.status = e.target.value; applyAllKidsFilters(); });
+  $('#ak-gender').addEventListener('change', e => { allKidsFilters.gender = e.target.value; applyAllKidsFilters(); });
   $('#ak-sort').addEventListener('change', e => { allKidsFilters.sort = e.target.value; applyAllKidsFilters(); });
   loadAllKids();
 };
 
 function clearAllKidsFilters() {
-  allKidsFilters = { search: '', sub: 'All', status: 'All', sort: 'Newest' };
+  allKidsFilters = { search: '', sub: 'All', status: 'All', gender: 'All', sort: 'Newest' };
   $('#ak-search').value = ''; $('#ak-sub').value = 'All';
-  $('#ak-status').value = 'All'; $('#ak-sort').value = 'Newest';
+  $('#ak-status').value = 'All'; $('#ak-gender').value = 'All'; $('#ak-sort').value = 'Newest';
   applyAllKidsFilters();
 }
 
@@ -2306,7 +2342,7 @@ function renderKidsTable(kids) {
     const statusBadge = k.Status === 'Blocked' ? '<span class="badge badge-red">Blocked</span>' : '<span class="badge badge-green">Active</span>';
     return `
       <tr data-kid="${esc(k.KidID)}">
-        <td><div class="row gap-sm">${k.PhotoData ? `<img class="photo-thumb" src="${esc(k.PhotoData)}" onerror="this.style.display='none'">` : ''}<span class="fw-6">${esc(k.FullName)}</span></div></td>
+        <td><div class="row gap-sm">${k.PhotoData ? `<img class="photo-thumb" src="${esc(k.PhotoData)}" onerror="this.style.display='none'">` : ''}${genderDot(k.Gender)}<span class="fw-6">${esc(k.FullName)}</span></div></td>
         <td>${age != null ? age + 'y' : '—'}</td>
         <td>${esc(k.ParentName)}</td>
         <td class="mono text-sm">${esc(k.Phone)}</td>
@@ -2346,6 +2382,7 @@ function applyAllKidsFilters() {
     });
   }
   if (f.status !== 'All') list = list.filter(k => k.Status === f.status);
+  if (f.gender !== 'All') list = list.filter(k => k.Gender === f.gender);
   const sortFn = {
     Newest:   (a,b) => new Date(b.CreatedAt) - new Date(a.CreatedAt),
     AZ:       (a,b) => (a.FullName || '').localeCompare(b.FullName || ''),
@@ -2363,10 +2400,11 @@ async function viewProfile(kidId) {
   const k = res.kid;
   const age = ageFromDob(k.DateOfBirth);
   openModal(`
-    <div class="modal-title">${esc(k.FullName)}</div>
+    <div class="modal-title" style="display:flex;align-items:center;gap:10px;">${genderDot(k.Gender)}<span>${esc(k.FullName)}</span></div>
     <div class="row" style="align-items:flex-start;gap:16px;">
       ${k.PhotoData ? `<img src="${esc(k.PhotoData)}" class="photo-lg" onerror="this.style.display='none'">` : '<div class="photo-lg" style="background:#f1f5f9;"></div>'}
       <div style="flex:1;">
+        <div class="text-sm"><span class="text-mute">Gender:</span> ${genderBadge(k.Gender) || '—'}</div>
         <div class="text-sm"><span class="text-mute">Age:</span> ${age != null ? age + 'y' : '—'}</div>
         <div class="text-sm"><span class="text-mute">DOB:</span> ${fmtDate(k.DateOfBirth)}</div>
         <div class="text-sm"><span class="text-mute">School:</span> ${esc(k.School)}</div>
@@ -2408,6 +2446,13 @@ async function editKid(kidId) {
         <div class="field"><label>First Name</label><input name="firstName" value="${esc(k.FirstName)}" required></div>
         <div class="field"><label>Last Name</label><input name="lastName" value="${esc(k.LastName)}" required></div>
         <div class="field"><label>DOB</label><input name="dateOfBirth" type="date" value="${esc(String(k.DateOfBirth).slice(0,10))}" required></div>
+        <div class="field"><label>Gender <span class="required">*</span></label>
+          <select name="gender" required>
+            <option value="">— Select —</option>
+            <option value="Male" ${k.Gender === 'Male' ? 'selected' : ''}>Male</option>
+            <option value="Female" ${k.Gender === 'Female' ? 'selected' : ''}>Female</option>
+          </select>
+        </div>
         <div class="field"><label>School</label><select name="school" required>${schoolOpts}</select></div>
         <div class="field"><label>Grade</label><select name="grade" required>${gradeOpts}</select></div>
         <div class="field full"><label>Address</label><input name="address" value="${esc(k.Address || '')}"></div>
@@ -2445,7 +2490,8 @@ async function submitEdit(e, kidId) {
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Saving...';
   const res = await api('updateKid', {
     kidId, firstName: d.firstName, lastName: d.lastName,
-    dateOfBirth: d.dateOfBirth, school: d.school, grade: d.grade,
+    dateOfBirth: d.dateOfBirth, gender: d.gender,
+    school: d.school, grade: d.grade,
     address: d.address, parentName: d.parentName,
     phone, emergencyContact: emergency, notes: d.notes
   });
@@ -2732,8 +2778,15 @@ function renderBackupStatus() {
   const last = localStorage.getItem('aq_last_backup');
   const method = localStorage.getItem('aq_last_backup_method') || 'file';
   if (!last) { box.innerHTML = '⚠️ <b>No backup yet</b> — create one soon!'; return; }
-  const age = Math.round((Date.now() - new Date(last).getTime()) / 3600000);
-  const ageTxt = age < 1 ? '<1h ago' : age < 24 ? age + 'h ago' : Math.round(age/24) + 'd ago';
+  const ageMs = Date.now() - new Date(last).getTime();
+  const ageMin = Math.floor(ageMs / 60000);
+  const ageH = Math.floor(ageMs / 3600000);
+  const ageD = Math.floor(ageH / 24);
+  let ageTxt;
+  if (ageMin < 1) ageTxt = 'just now';
+  else if (ageMin < 60) ageTxt = ageMin + 'm ago';
+  else if (ageH < 24) ageTxt = ageH + 'h ago';
+  else ageTxt = ageD + 'd ago';
   box.innerHTML = `Last backup: <b>${ageTxt}</b> (${method === 'drive' ? 'Google Drive' : 'file'})`;
 }
 
@@ -2795,7 +2848,10 @@ async function loadAdminSchools() {
   if (!res.ok) { box.innerHTML = esc(res.error); return; }
   schoolsCache = res.schools || [];
   const pills = schoolsCache.map(s => `
-    <span class="pill">${esc(s)} <button onclick="deleteSchoolPill('${esc(s.replace(/'/g,'&#39;'))}')">×</button></span>
+    <span class="pill">
+      <span ondblclick="editSchoolPill('${esc(s.replace(/'/g,'&#39;'))}')" title="Double-click to edit" style="cursor:pointer;">${esc(s)}</span>
+      <button onclick="deleteSchoolPill('${esc(s.replace(/'/g,'&#39;'))}')">×</button>
+    </span>
   `).join('');
   box.innerHTML = `
     <div class="pill-row">${pills || '<span class="text-mute text-sm">No schools.</span>'}</div>
@@ -2809,6 +2865,16 @@ async function addSchoolClick() {
   const r = await api('addSchool', { name });
   if (!r.ok) { toast(r.error, 'error'); return; }
   toast('Added ✓', 'success'); loadAdminSchools();
+}
+async function editSchoolPill(oldName) {
+  const newName = prompt(`Edit school name:`, oldName);
+  if (!newName || !newName.trim() || newName.trim() === oldName) return;
+  // Delete old, add new
+  const delRes = await api('deleteSchool', { name: oldName });
+  if (!delRes.ok) { toast(delRes.error, 'error'); return; }
+  const addRes = await api('addSchool', { name: newName.trim() });
+  if (!addRes.ok) { toast(addRes.error, 'error'); return; }
+  toast('Updated ✓', 'success'); loadAdminSchools();
 }
 async function deleteSchoolPill(name) {
   if (!confirm(`Delete "${name}"?`)) return;
