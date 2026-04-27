@@ -1,0 +1,106 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Helper functions
+    // ─────────────────────────────────────────────────────────────────────
+
+    // True if the request is authenticated.
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // The path to the requesting user's profile document in the given tenant.
+    function userDocPath(tenantId) {
+      return /databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid);
+    }
+
+    // True if the user has a profile in this tenant AND is Active (or Active is missing — defaults to true).
+    function hasProfile(tenantId) {
+      return isSignedIn()
+          && exists(userDocPath(tenantId))
+          && (
+              !('Active' in get(userDocPath(tenantId)).data)
+              || get(userDocPath(tenantId)).data.Active == true
+            );
+    }
+
+    // The user's role in this tenant. Returns null if no profile.
+    function getRole(tenantId) {
+      return hasProfile(tenantId) ? get(userDocPath(tenantId)).data.Role : null;
+    }
+
+    // True if the user has any of the given roles in this tenant.
+    function hasRole(tenantId, roles) {
+      return getRole(tenantId) in roles;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Tenant-scoped rules
+    // ─────────────────────────────────────────────────────────────────────
+
+    match /tenants/{tenantId} {
+
+      // The tenant root document itself: anyone with a profile can read; only SuperAdmin can write.
+      allow read:  if hasProfile(tenantId);
+      allow write: if hasRole(tenantId, ['SuperAdmin']);
+
+      // Users collection — staff accounts.
+      // A user MUST be able to read their OWN profile even if Active is false,
+      // otherwise they can't see the "your account is deactivated" error.
+      // SuperAdmin can read/write any profile.
+      match /users/{userId} {
+        allow read:  if isSignedIn()
+                       && (request.auth.uid == userId
+                           || hasRole(tenantId, ['SuperAdmin']));
+        allow write: if hasRole(tenantId, ['SuperAdmin']);
+      }
+
+      // Settings — SuperAdmin only for writes; any profile can read.
+      match /settings/{settingKey} {
+        allow read:  if hasProfile(tenantId);
+        allow write: if hasRole(tenantId, ['SuperAdmin']);
+      }
+
+      // Financial events — append-only ledger. Immutable per §27.
+      match /financialEvents/{finId} {
+        allow read:   if hasRole(tenantId, ['SuperAdmin']);
+        allow create: if hasRole(tenantId, ['Operator', 'Admin', 'SuperAdmin']);
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // Loyalty ledger — append-only. Immutable per §27.
+      match /loyaltyLedger/{ledgerId} {
+        allow read:   if hasProfile(tenantId);
+        allow create: if hasRole(tenantId, ['Operator', 'Admin', 'SuperAdmin']);
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // Audit log — append-only. Immutable per §27.
+      match /audit/{logId} {
+        allow read:   if hasRole(tenantId, ['Admin', 'SuperAdmin']);
+        allow create: if hasProfile(tenantId);
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // All other collections under the tenant.
+      // Today: any user with a profile in the tenant can read/write within it.
+      // Future sessions will tighten this per-collection as features are built.
+      match /{collection}/{document=**} {
+        allow read, write: if hasProfile(tenantId);
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Default deny — anything outside /tenants/{tenantId}/... is forbidden.
+    // ─────────────────────────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
