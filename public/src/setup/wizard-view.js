@@ -3,11 +3,11 @@
 // Onboarding wizard (§29). The 7-step setup flow that runs the first time
 // a SuperAdmin signs in to a fresh tenant.
 //
-// CURRENT STATE: shell + Step 1 + Step 2 + Step 3 (each in its own file).
-// Steps 4-6 are placeholders. Step 7 is intentionally a display-only
-// "configure later" screen (see §39.4).
-// The Finalize logic in wizard-state.js gracefully handles missing optional
-// data (Steps 4 and 5 stay null, Step 6 username is empty so no-op).
+// CURRENT STATE: shell + Steps 1, 2, 3, 4, 5, 6 (each in its own file).
+// Step 7 is intentionally a display-only "configure later" screen (see §39.4).
+// The Finalize logic in wizard-state.js handles missing optional data
+// (Step 4 / Step 5 may both be null when skipped; Step 6 username is
+// no-op when unchanged).
 //
 // Public API:
 //   renderWizardView(container, profile, onComplete)
@@ -24,6 +24,9 @@ import { createInitialState, finalizeWizard } from "./wizard-state.js";
 import { renderStep1Identity } from "./steps/step1-identity.js";
 import { renderStep2Operating } from "./steps/step2-operating.js";
 import { renderStep3SessionType } from "./steps/step3-session-type.js";
+import { renderStep4Subscription } from "./steps/step4-subscription.js";
+import { renderStep5Bundle } from "./steps/step5-bundle.js";
+import { renderStep6ConfirmAccount } from "./steps/step6-confirm-account.js";
 
 const TOTAL_STEPS = 7;
 
@@ -34,7 +37,7 @@ export function renderWizardView(container, profile, onComplete) {
   ensureStyles();
 
   // Build the in-memory state object. Pre-fill the SuperAdmin username from
-  // the profile so Step 6 (when we get there) shows the current value.
+  // the profile so Step 6 shows the current value.
   const state = createInitialState();
   state.superAdminUsername = profile.username || "";
 
@@ -90,6 +93,8 @@ export function renderWizardView(container, profile, onComplete) {
   const signOutBtn   = container.querySelector("#aq-wizard-signout");
 
   // ── Step rendering ────────────────────────────────────────────────────────
+  // Every step function is called with (bodyEl, state, handleValidChange, profile).
+  // Steps that don't need the profile argument simply ignore it.
 
   function renderCurrentStep() {
     // Tear down the previous step.
@@ -105,20 +110,22 @@ export function renderWizardView(container, profile, onComplete) {
     bodyEl.innerHTML = "";
     switch (currentStep) {
       case 1:
-        stepCleanup = renderStep1Identity(bodyEl, state, handleValidChange);
+        stepCleanup = renderStep1Identity(bodyEl, state, handleValidChange, profile);
         break;
       case 2:
-        stepCleanup = renderStep2Operating(bodyEl, state, handleValidChange);
+        stepCleanup = renderStep2Operating(bodyEl, state, handleValidChange, profile);
         break;
       case 3:
-        stepCleanup = renderStep3SessionType(bodyEl, state, handleValidChange);
+        stepCleanup = renderStep3SessionType(bodyEl, state, handleValidChange, profile);
         break;
       case 4:
+        stepCleanup = renderStep4Subscription(bodyEl, state, handleValidChange, profile);
+        break;
       case 5:
+        stepCleanup = renderStep5Bundle(bodyEl, state, handleValidChange, profile);
+        break;
       case 6:
-        stepCleanup = renderPlaceholderStep(bodyEl, currentStep);
-        // Placeholders are always "valid" so Next is enabled.
-        stepIsValid = true;
+        stepCleanup = renderStep6ConfirmAccount(bodyEl, state, handleValidChange, profile);
         break;
       case 7:
         stepCleanup = renderStep7TerminalPlaceholder(bodyEl);
@@ -256,34 +263,10 @@ export function renderWizardView(container, profile, onComplete) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Placeholder steps (will be replaced by real step files)
+// Step 7 — terminal placeholder (display-only by design, see §39.4)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const STEP_NAMES = {
-  4: "First subscription model",
-  5: "First bundle",
-  6: "Confirm your account"
-};
-
-function renderPlaceholderStep(container, stepNumber) {
-  const stepName = STEP_NAMES[stepNumber] || "Coming next";
-  const title = strings.wizard.placeholderStepTitle
-    .replace("{n}", stepNumber)
-    .replace("{name}", stepName);
-
-  container.innerHTML = `
-    <div class="aq-wizard__step">
-      <h2 class="aq-wizard__step-title">${escapeHtml(title)}</h2>
-      <p class="aq-wizard__step-placeholder">${strings.wizard.placeholderStepBody}</p>
-    </div>
-  `;
-
-  // No listeners to clean up.
-  return function cleanup() {};
-}
-
 function renderStep7TerminalPlaceholder(container) {
-  // Step 7 is intentionally write-nothing — see §39.4 of the master prompt.
   container.innerHTML = `
     <div class="aq-wizard__step">
       <h2 class="aq-wizard__step-title">Step 7: Face terminal setup</h2>
@@ -299,19 +282,6 @@ function renderStep7TerminalPlaceholder(container) {
   `;
 
   return function cleanup() {};
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Utilities
-// ─────────────────────────────────────────────────────────────────────────────
-
-function escapeHtml(str) {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

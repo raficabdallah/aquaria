@@ -37,6 +37,15 @@ export const strings = {
     placeholderBody: "The dashboard will be built in a later phase. For now, this screen confirms that authentication and role lookup are working."
   },
 
+  // Display labels for staff roles. Used wherever a role name is shown to a user.
+  // Stored value in Firestore is the raw role key ("SuperAdmin" / "Admin" / "Operator");
+  // this map is for display only.
+  roles: {
+    SuperAdmin: "Owner / SuperAdmin",
+    Admin: "Administrator",
+    Operator: "Operator"
+  },
+
   wizard: {
     headerTitle: "Aquaria Setup",
     stepLabel: "Step {current} of {total}",
@@ -106,9 +115,95 @@ export const strings = {
       priceSuffix: "USD"
     },
 
-    // Steps 4-7 — placeholder until built
+    // Step 4 — First subscription model (OPTIONAL — Skip allowed)
+    step4: {
+      title: "Your first subscription (optional)",
+      subtitle: "Subscriptions let regular families pay once for a whole period. You can skip this step and add subscriptions later — or leave the name and price blank to skip and click Next.",
+
+      nameLabel: "Name",
+      namePlaceholder: "e.g. Monthly Unlimited",
+      nameHelp: "Short label families will see when choosing this subscription.",
+
+      durationMonthsLabel: "Length",
+      durationMonthsHelp: "How long the subscription lasts.",
+      durationMonthsOption1:  "1 month",
+      durationMonthsOption3:  "3 months",
+      durationMonthsOption6:  "6 months",
+      durationMonthsOption12: "12 months",
+
+      visitsPerWeekLabel: "Visits per week",
+      visitsPerWeekHelp: "How many times the kid can come each week. Pick Unlimited for no weekly cap.",
+      visitsPerWeekOption1: "1 visit per week",
+      visitsPerWeekOption2: "2 visits per week",
+      visitsPerWeekOption3: "3 visits per week",
+      visitsPerWeekOption4: "4 visits per week",
+      visitsPerWeekOption5: "5 visits per week",
+      visitsPerWeekOption6: "6 visits per week",
+      visitsPerWeekOptionUnlimited: "Unlimited",
+
+      minutesPerVisitLabel: "Minutes per visit",
+      minutesPerVisitHelp: "How long each visit lasts.",
+      // Reuses Step 3's durationOption keys for consistency.
+
+      priceLabel: "Total price",
+      pricePlaceholder: "50.00",
+      priceHelp: "The total a family pays for the whole subscription period — not per visit.",
+      priceSuffix: "USD"
+    },
+
+    // Step 5 — First bundle (OPTIONAL — Skip allowed)
+    step5: {
+      title: "Your first bundle (optional)",
+      subtitle: "A bundle is a prepaid pack of visits — like a punch card. The family pays once and uses the visits within a validity period. You can skip this step and add bundles later — or leave the name and price blank to skip and click Next.",
+
+      nameLabel: "Name",
+      namePlaceholder: "e.g. 10-Visit Pack",
+      nameHelp: "Short label families will see when choosing this bundle.",
+
+      totalVisitsLabel: "Number of visits",
+      totalVisitsHelp: "How many visits the bundle contains in total.",
+      totalVisitsOption5:  "5 visits",
+      totalVisitsOption10: "10 visits",
+      totalVisitsOption15: "15 visits",
+      totalVisitsOption20: "20 visits",
+      totalVisitsOption25: "25 visits",
+
+      validityMonthsLabel: "Validity",
+      validityMonthsHelp: "How long the family has to use up the visits before they expire.",
+      validityMonthsOption1:  "1 month",
+      validityMonthsOption3:  "3 months",
+      validityMonthsOption6:  "6 months",
+      validityMonthsOption12: "12 months",
+
+      minutesPerVisitLabel: "Minutes per visit",
+      minutesPerVisitHelp: "How long each visit lasts.",
+      // Reuses Step 3's durationOption keys for consistency.
+
+      priceLabel: "Total price",
+      pricePlaceholder: "40.00",
+      priceHelp: "The total a family pays for the whole bundle — not per visit.",
+      priceSuffix: "USD"
+    },
+
+    // Step 7 — placeholder until built (display-only by design, see §39.4)
     placeholderStepTitle: "Step {n}: {name}",
-    placeholderStepBody: "This step will be built next. For now, click Next to continue."
+    placeholderStepBody: "This step will be built next. For now, click Next to continue.",
+
+    // Step 6 — Confirm SuperAdmin account
+    step6: {
+      title: "Your account",
+      subtitle: "This is the SuperAdmin account you used to start the setup. You can update your display name now or change it later from the Admin Panel.",
+
+      emailLabel: "Email",
+      emailHelp: "This is how you sign in. To change it, open the Admin Panel after setup.",
+
+      roleLabel: "Role",
+      roleHelp: "SuperAdmin is the owner role — full access to everything. You can add more staff with limited access later.",
+
+      usernameLabel: "Display name",
+      usernamePlaceholder: "e.g. Rafic",
+      usernameHelp: "What appears in audit logs and on the dashboard. Leave it as it is to keep your current display name."
+    }
   },
 
   setupIncomplete: {
@@ -148,6 +243,24 @@ export const strings = {
     sessionTypePriceNegative: "Price cannot be negative.",
     sessionTypePriceTooManyDecimals: "Price can have at most two decimal places.",
     sessionTypePriceTooHigh: "Price is unreasonably high.",
+
+    // Wizard validation — Step 4
+    subscriptionNameTooShort: "Subscription name must be at least 2 characters.",
+    subscriptionNameTooLong: "Subscription name is too long.",
+    subscriptionPriceInvalid: "Price must be a number, e.g. 50 or 50.00.",
+    subscriptionPriceNegative: "Price cannot be negative.",
+    subscriptionPriceTooManyDecimals: "Price can have at most two decimal places.",
+    subscriptionPriceTooHigh: "Price is unreasonably high.",
+    subscriptionPartialFill: "Please fill in both name and price, or leave both blank to skip.",
+
+    // Wizard validation — Step 5
+    bundleNameTooShort: "Bundle name must be at least 2 characters.",
+    bundleNameTooLong: "Bundle name is too long.",
+    bundlePriceInvalid: "Price must be a number, e.g. 40 or 40.00.",
+    bundlePriceNegative: "Price cannot be negative.",
+    bundlePriceTooManyDecimals: "Price can have at most two decimal places.",
+    bundlePriceTooHigh: "Price is unreasonably high.",
+    bundlePartialFill: "Please fill in both name and price, or leave both blank to skip.",
 
     // Generic fallback
     unexpected: "Something went wrong. Please try again."
