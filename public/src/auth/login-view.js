@@ -1,4 +1,4 @@
-// src/auth/login-view.js
+// public/src/auth/login-view.js
 //
 // The login form. Renders into a target element, handles submit, calls auth-service,
 // shows toasts on failure. Does NOT decide what happens after login —

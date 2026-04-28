@@ -1,4 +1,4 @@
-// src/ui/shell.js
+// public/src/ui/shell.js
 //
 // The orchestrator. Decides what's on screen based on auth state.
 // Owns the header when a user is signed in.
@@ -21,9 +21,10 @@ import {
   getCurrentUserProfile
 } from "../auth/auth-service.js";
 import { renderLoginView } from "../auth/login-view.js";
+import { renderWizardView } from "../setup/wizard-view.js";
+import { isSetupComplete } from "../setup/setup-status.js";
 import { strings } from "../strings/en.js";
 import { showToast } from "./toast.js";
-
 // Reference to the cleanup function returned by the currently-mounted view.
 // We call this before swapping views so listeners don't leak.
 let currentViewCleanup = null;
@@ -66,6 +67,33 @@ export function mountShell(targetEl) {
       const message = strings.errors[result.errorKey] || strings.errors.unexpected;
       showToast(message, "error");
       await signOut();
+      return;
+    }
+
+    // Profile loaded. Now check whether onboarding has been completed.
+    let setupDone;
+    try {
+      setupDone = await isSetupComplete();
+    } catch (err) {
+      console.error("[shell] isSetupComplete threw:", err);
+      showToast(strings.errors.setupCheckFailed, "error");
+      await signOut();
+      return;
+    }
+
+    if (!setupDone) {
+      // Onboarding not finished. Only SuperAdmin can run the wizard.
+      // Other roles see a "setup not finished" screen with a sign-out button.
+      if (result.profile.role === "SuperAdmin") {
+        swapView((container) =>
+          renderWizardView(container, result.profile, () => {
+            // Wizard finished. Re-render: setup is now complete, dashboard appears.
+            renderSignedInLayout(result.profile);
+          })
+        );
+      } else {
+        renderSetupIncomplete(result.profile);
+      }
       return;
     }
 
@@ -154,6 +182,57 @@ function renderSignedInLayout(profile) {
   // Set the cleanup so a future view swap detaches the listener.
   currentViewCleanup = function cleanup() {
     logoutBtn.removeEventListener("click", handleLogout);
+  };
+}
+
+/**
+ * Render the "setup not finished" screen for non-SuperAdmin users when
+ * the onboarding wizard hasn't been completed yet.
+ * They get a friendly message and a sign-out button — that's it.
+ */
+function renderSetupIncomplete(profile) {
+  if (currentViewCleanup) {
+    try { currentViewCleanup(); } catch (e) { console.error("[shell] cleanup threw:", e); }
+    currentViewCleanup = null;
+  }
+
+  const greeting = strings.setupIncomplete.greeting
+    .replace("{email}", profile.email)
+    .replace("{role}", profile.role || "—");
+
+  rootEl.innerHTML = `
+    <div class="aq-app">
+      <main class="aq-main">
+        <div class="aq-card aq-card--centered">
+          <h2 class="aq-card__title">${strings.setupIncomplete.title}</h2>
+          <p class="aq-card__body">${escapeHtml(greeting)}</p>
+          <p class="aq-card__body">${strings.setupIncomplete.body}</p>
+          <div class="aq-card__actions">
+            <button class="aq-button aq-button--ghost" id="aq-setup-incomplete-signout">
+              ${strings.shell.logoutButton}
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+  `;
+
+  const signOutBtn = rootEl.querySelector("#aq-setup-incomplete-signout");
+  async function handleLogout() {
+    signOutBtn.disabled = true;
+    try {
+      await signOut();
+      showToast(strings.toast.signedOut, "info");
+    } catch (err) {
+      console.error("[shell] signOut failed:", err);
+      showToast(strings.errors.unexpected, "error");
+      signOutBtn.disabled = false;
+    }
+  }
+  signOutBtn.addEventListener("click", handleLogout);
+
+  currentViewCleanup = function cleanup() {
+    signOutBtn.removeEventListener("click", handleLogout);
   };
 }
 
@@ -275,11 +354,25 @@ function ensureShellStyles() {
     }
 
     .aq-card__body {
-      margin: 0;
+      margin: 0 0 12px 0;
       font-family: 'DM Sans', system-ui, sans-serif;
       font-size: 14px;
       line-height: 1.5;
       color: var(--ink-2, #334155);
+    }
+
+    .aq-card__body:last-child {
+      margin-bottom: 0;
+    }
+
+    .aq-card--centered {
+      text-align: center;
+    }
+
+    .aq-card__actions {
+      margin-top: 20px;
+      display: flex;
+      justify-content: center;
     }
 
     .aq-loading {

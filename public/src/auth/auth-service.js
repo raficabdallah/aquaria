@@ -1,4 +1,4 @@
-// src/auth/auth-service.js
+// public/src/auth/auth-service.js
 //
 // All authentication logic lives here. UI files call into this module —
 // they never touch Firebase Auth or the users/ collection directly.

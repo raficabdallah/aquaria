@@ -1,4 +1,4 @@
-// src/ui/toast.js
+// public/src/ui/toast.js
 //
 // Small toast notification helper. Self-contained — first call creates
 // its own DOM container, no setup required in index.html.

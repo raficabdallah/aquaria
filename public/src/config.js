@@ -1,4 +1,4 @@
-// src/config.js
+// public/src/config.js
 //
 // App-wide constants. Single source of truth.
 // Per master prompt §4 (Configuration Constants).

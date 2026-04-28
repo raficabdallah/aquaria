@@ -1,4 +1,4 @@
-// src/firebase-init.js
+// public/src/firebase-init.js
 //
 // Initializes Firebase ONCE, exports the services other modules need.
 // Every file that needs Firestore or Auth imports from this file —
