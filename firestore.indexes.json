@@ -1,4 +1,74 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "kids",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "Deleted", "order": "ASCENDING" },
+        { "fieldPath": "Status",  "order": "ASCENDING" },
+        { "fieldPath": "SearchKey", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "kids",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "Deleted",   "order": "ASCENDING" },
+        { "fieldPath": "Status",    "order": "ASCENDING" },
+        { "fieldPath": "CreatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "kids",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "Deleted",   "order": "ASCENDING" },
+        { "fieldPath": "Status",    "order": "ASCENDING" },
+        { "fieldPath": "CreatedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "kids",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "Deleted",   "order": "ASCENDING" },
+        { "fieldPath": "SearchKey", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "kids",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "Deleted",   "order": "ASCENDING" },
+        { "fieldPath": "CreatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "kids",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "Deleted",   "order": "ASCENDING" },
+        { "fieldPath": "CreatedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "kids",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "Deleted",    "order": "ASCENDING" },
+        { "fieldPath": "SchoolType", "order": "ASCENDING" },
+        { "fieldPath": "SearchKey",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "kids",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "Deleted",   "order": "ASCENDING" },
+        { "fieldPath": "School",    "order": "ASCENDING" },
+        { "fieldPath": "SearchKey", "order": "ASCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }

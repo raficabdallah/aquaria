@@ -29,7 +29,8 @@ export const strings = {
     loggedInAs: "Signed in as {email}",
     role: "Role: {role}",
     logoutButton: "Sign out",
-    loadingProfile: "Loading your account…"
+    loadingProfile: "Loading your account…",
+    navKids: "Kids"
   },
 
   dashboard: {
@@ -212,6 +213,253 @@ export const strings = {
     body: "The playground setup hasn't been completed yet. Please ask the SuperAdmin to sign in and finish the onboarding."
   },
 
+  kids: {
+    register: {
+      pageTitle: "Register a new kid",
+      pageSubtitle: "Fill in the child's information. Required fields are marked.",
+
+      // Sections
+      sectionChild: "Child",
+      sectionSchool: "School",
+      sectionParent: "Parent & contacts",
+      sectionLocation: "Location",
+      sectionNotes: "Notes",
+
+      // Photo
+      photoLabel: "Photo (optional)",
+      photoHelp: "Will be replaced by face capture once the terminal is connected.",
+      photoPick: "Choose photo",
+      photoTake: "Take photo",
+      photoRemove: "Remove",
+      photoProcessing: "Processing photo…",
+
+      // Child fields
+      firstNameLabel: "First name",
+      firstNamePlaceholder: "e.g. Maya",
+      lastNameLabel: "Last name",
+      lastNamePlaceholder: "e.g. Khoury",
+      dobLabel: "Date of birth",
+      dobHelp: "Between 1 and 18 years ago.",
+      genderLabel: "Gender",
+      genderMale: "Male",
+      genderFemale: "Female",
+
+      // School fields
+      schoolTypeLabel: "School type",
+      schoolTypeLocal: "Local school",
+      schoolTypeOoc: "Out-of-country school",
+      schoolNameLabel: "School name",
+      schoolNameLocalPlaceholder: "e.g. AIS",
+      schoolNameOocPlaceholder: "Optional — name of school abroad",
+      schoolNameLocalHelp: "Type the school name. Suggestions appear as you type.",
+      schoolNameOocHelp: "If parents share the school's name, enter it here.",
+      gradeLabel: "Grade",
+      gradePlaceholder: "e.g. Grade 3",
+      gradeHelp: "Type the grade. Suggestions appear as you type.",
+
+      // Parent fields
+      parentNameLabel: "Parent name",
+      parentNamePlaceholder: "e.g. Sarah Khoury",
+      phoneLabel: "Parent phone",
+      phoneHelp: "Pick the country code, then enter the local number.",
+      phonePlaceholder: "70 123 456",
+      emergencyLabel: "Emergency contact (optional)",
+      emergencyHelp: "A second number reachable in case the parent isn't.",
+      emergencyPlaceholder: "Local number",
+
+      // Location fields
+      cityLabel: "City of residence",
+      cityPlaceholder: "e.g. Beirut",
+      addressLabel: "Full address (optional)",
+      addressPlaceholder: "Street, building, floor",
+
+      // Notes
+      notesLabel: "Notes (optional)",
+      notesPlaceholder: "Allergies, medical notes, behavioral notes…",
+      notesHelp: "Up to 500 characters.",
+
+      // Actions
+      submitButton: "Register kid",
+      submittingButton: "Registering…",
+      cancelButton: "Cancel",
+
+      // Validation messages
+      requiredField: "This field is required.",
+      firstNameTooShort: "First name is too short.",
+      firstNameTooLong: "First name is too long.",
+      lastNameTooShort: "Last name is too short.",
+      lastNameTooLong: "Last name is too long.",
+      dobInvalid: "Please pick a valid date.",
+      dobOutOfRange: "Date of birth must be between 1 and 18 years ago.",
+      schoolNameRequiredLocal: "School name is required for local schools.",
+      schoolNameTooLong: "School name is too long.",
+      gradeTooLong: "Grade is too long.",
+      parentNameTooShort: "Parent name is too short.",
+      parentNameTooLong: "Parent name is too long.",
+      phoneInvalid: "Phone number must have between 6 and 14 digits.",
+      emergencyInvalid: "Emergency contact must have between 6 and 14 digits.",
+      cityTooShort: "City is required.",
+      cityTooLong: "City name is too long.",
+      addressTooLong: "Address is too long.",
+      notesTooLong: "Notes must be 500 characters or fewer.",
+      photoTooLarge: "Photo file is too large (max 10 MB).",
+      photoNotImage: "Selected file is not an image."
+    },
+
+    profile: {
+      pageTitle: "Kid profile",
+      backToDashboard: "Back to dashboard",
+      registerAnother: "Register another kid",
+
+      // Sections
+      sectionChild: "Child",
+      sectionSchool: "School",
+      sectionParent: "Parent & contacts",
+      sectionLocation: "Location",
+      sectionNotes: "Notes",
+
+      // Field labels (read-only display)
+      labelFirstName: "First name",
+      labelLastName: "Last name",
+      labelFullName: "Full name",
+      labelDob: "Date of birth",
+      labelAge: "Age",
+      labelGender: "Gender",
+      labelSchoolType: "School type",
+      labelSchool: "School",
+      labelGrade: "Grade",
+      labelParentName: "Parent",
+      labelPhone: "Phone",
+      labelEmergency: "Emergency contact",
+      labelCity: "City",
+      labelAddress: "Address",
+      labelNotes: "Notes",
+      labelStatus: "Status",
+      labelLoyalty: "Loyalty",
+      labelRegisteredOn: "Registered",
+
+      // Display values
+      schoolTypeLocal: "Local",
+      schoolTypeOoc: "Out-of-country",
+      ageYears: "{years} years",
+      ageOneYear: "1 year",
+      none: "—",
+      statusActive: "Active",
+      statusBlocked: "Blocked",
+      loyaltyLine: "{points} pts · {level}",
+
+      notFoundTitle: "Kid not found",
+      notFoundBody: "This kid record does not exist or has been deleted."
+    }
+  },
+
+  // Developer-only tools, gated to dev project + SuperAdmin role at runtime.
+  // These strings are shown only on the dev project and never reach end users.
+  devTools: {
+    badge: "Dev",
+    title: "Developer tools",
+    subtitle: "Only visible in the development project. These actions write to the live database — use with care.",
+
+    seedButton: "Seed 5 fake kids",
+    seedRunning: "Seeding…",
+    seedSuccess: "Seeded {count} fake kids.",
+
+    backfillButton: "Backfill SearchKey on existing kids",
+    backfillRunning: "Backfilling…",
+    backfillSuccess: "Backfill done — {updated} of {scanned} kids updated."
+  },
+
+  kidsList: {
+    title: "Kids",
+    registerButton: "+ Register kid",
+
+    searchPlaceholder: "Search by name…",
+
+    statusLabel: "Status",
+    statusAll: "All",
+    statusActive: "Active",
+    statusBlocked: "Blocked",
+
+    schoolLabel: "School",
+    schoolAny: "Any school",
+    schoolOoc: "Out-of-country",
+
+    sortLabel: "Sort",
+    sortName: "Name (A–Z)",
+    sortNewest: "Newest first",
+    sortOldest: "Oldest first",
+
+    showDeleted: "Show deleted",
+
+    badgeBlocked: "Blocked",
+    badgeDeleted: "Deleted",
+
+    loading: "Loading kids…",
+    loadingMore: "Loading…",
+    loadMore: "Load {n} more",
+
+    // Result count line.  {n} = number,  {verb} = "active kids" / "blocked kids" / etc.
+    countExact: "Showing all {n} {verb}.",
+    countMany:  "Showing {n} {verb} (more available).",
+    countZero:  "No {verb} match these filters.",
+    verbActive:  "active kids",
+    verbBlocked: "blocked kids",
+    verbAll:     "kids",
+
+    // Empty states
+    emptyTitle: "No kids registered yet",
+    emptyBody: "Register your first kid to get started.",
+    emptyCta: "Register your first kid",
+    noMatchTitle: "No kids match these filters",
+    noMatchBody: "Try clearing filters or adjusting your search.",
+    clearFilters: "Clear filters",
+
+    errorTitle: "Could not load the kids list"
+  },
+
+editLocks: {
+    // Generic
+    unknownHolder: "Another staff member",
+
+    // Warning modal (shown by the service when inactivity timer fires)
+    warningTitle: "Are you still there?",
+    warningBody: "You haven't made any changes for a while. Your unsaved edits will be discarded if you don't continue.",
+    warningCountdown: "{n}s",
+    warningContinue: "Keep editing",
+    warningLeave: "Discard and leave",
+
+    // Playground (dev-tools)
+    playground: {
+      title: "Edit-locks playground",
+      subtitle: "Exercise the edit-locks service against a fake lock key. Open in two windows as different users to test concurrent acquisition. Inactivity and warning seconds are short by default for fast testing.",
+
+      inactivityLabel: "Inactivity (seconds)",
+      warningLabel: "Warning (seconds)",
+
+      acquireButton: "Acquire lock",
+      acquiring: "Acquiring…",
+      activityButton: "Simulate activity",
+      activityRecorded: "Activity recorded.",
+      releaseButton: "Release lock",
+      releasing: "Releasing…",
+      forceExpireButton: "Force expire",
+      forceReleaseButton: "Force release",
+
+      readoutTitle: "Lock document",
+      readoutLoading: "Loading…",
+
+      acquired: "Lock acquired.",
+      released: "Lock released.",
+      autoExited: "Lock auto-released after warning timeout.",
+      heldByOther: "Lock is held by {name}.",
+      forcedExpire: "Lock expiry pushed to the past — anyone can now reclaim it.",
+      forceExpireFailed: "Couldn't force expire — lock document may not exist.",
+      forceReleased: "Lock force-released.",
+      alreadyHeld: "You already hold this lock."
+    }
+  },
+
+  
   errors: {
     // Login-specific
     invalidCredentials: "Invalid email or password.",
@@ -262,13 +510,27 @@ export const strings = {
     bundlePriceTooHigh: "Price is unreasonably high.",
     bundlePartialFill: "Please fill in both name and price, or leave both blank to skip.",
 
+    // Kids module
+    notSignedIn: "Your session has ended. Please sign in again.",
+    kidWriteFailed: "Could not save the kid. Please try again.",
+    kidReadFailed: "Could not load the kid. Please try again.",
+    kidNotFound: "That kid was not found.",
+    kidIdMissing: "Missing kid ID.",
+    photoUploadPartial: "Kid registered, but the photo couldn't be uploaded. You can add it later.",
+    kidsListLoadFailed: "Could not load the kids list. Please try again.",
+
+    // Dev tools
+    seedFailed: "Could not seed any kids. Check console for details.",
+    backfillReadFailed: "Could not read kids to backfill. Please try again.",
+
     // Generic fallback
     unexpected: "Something went wrong. Please try again."
   },
 
   toast: {
     signedOut: "You have been signed out.",
-    setupComplete: "Setup complete! Welcome to Aquaria."
+    setupComplete: "Setup complete! Welcome to Aquaria.",
+    kidRegistered: "{name} registered."
   }
 
 };

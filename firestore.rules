@@ -47,6 +47,38 @@ service cloud.firestore {
       allow read:  if hasProfile(tenantId);
       allow write: if hasRole(tenantId, ['SuperAdmin']);
 
+      // Edit locks (§13). One doc per locked record (kid, subscription, etc).
+      // Note for future hardening: while the catch-all `match /{collection}/{document=**}`
+      // below grants tenant members general read/write, it OR's with these rules — so
+      // these strict checks are not yet defense-in-depth. They become effective once
+      // the catch-all is tightened in a later session. They also serve as the
+      // documented intent for this collection's security model.
+      match /editLocks/{lockKey} {
+        // Anyone signed in to this tenant can READ a lock doc.
+        // Necessary so the "locked by other staff" banner can render.
+        allow read: if hasProfile(tenantId);
+
+        // CREATE: requester must be a tenant member, and the new doc's LockedBy
+        // must match their own uid. (You can only acquire a lock for yourself.)
+        allow create: if hasProfile(tenantId)
+                      && request.resource.data.LockedBy == request.auth.uid;
+
+        // UPDATE: only the current lock holder, and they cannot change LockedBy
+        // (no hijacking via update — only LastActivityAt / ExpiresAt refreshes).
+        allow update: if hasProfile(tenantId)
+                      && resource.data.LockedBy == request.auth.uid
+                      && request.resource.data.LockedBy == resource.data.LockedBy;
+
+        // DELETE: by the holder (Save/Cancel), by anyone if expired (reclaim
+        // path), or by any SuperAdmin (force-release for support).
+        allow delete: if hasProfile(tenantId)
+                      && (
+                           resource.data.LockedBy == request.auth.uid
+                           || resource.data.ExpiresAt < request.time
+                           || hasRole(tenantId, ['SuperAdmin'])
+                         );
+      }
+
       // Users collection — staff accounts.
       // A user MUST be able to read their OWN profile even if Active is false,
       // otherwise they can't see the "your account is deactivated" error.

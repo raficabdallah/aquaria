@@ -1,0 +1,37 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Tenant-scoped paths only. Authenticated users with a tenant profile
+    // can read/write their tenant's files. Mirrors the firestore.rules pattern.
+    match /tenants/{tenantId}/{allPaths=**} {
+      allow read: if isSignedIn()
+                    && hasFirestoreProfile(tenantId);
+
+      // Writes capped at 10 MB to prevent runaway uploads.
+      allow write: if isSignedIn()
+                     && hasFirestoreProfile(tenantId)
+                     && request.resource.size < 10 * 1024 * 1024
+                     && request.resource.contentType.matches('image/.*');
+    }
+
+    // Default deny everything else.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Storage rules can read Firestore via firestore.get().
+    // Mirrors the hasProfile() helper in firestore.rules.
+    function hasFirestoreProfile(tenantId) {
+      return firestore.exists(
+        /databases/(default)/documents/tenants/$(tenantId)/users/$(request.auth.uid)
+      );
+    }
+  }
+}

@@ -1,19 +1,27 @@
 // public/src/ui/shell.js
 //
-// The orchestrator. Decides what's on screen based on auth state.
+// The orchestrator. Decides what's on screen based on auth state + URL hash.
 // Owns the header when a user is signed in.
 //
-// Lifecycle:
-//   1. mountShell(rootEl) is called once, from index.html.
-//   2. Shell renders a "loading" splash while Firebase Auth resolves.
-//   3. onAuthChange() fires:
-//        - user = null     -> render login view
-//        - user present    -> look up profile, then render dashboard
-//   4. On profile failure (not found / inactive): sign out + show toast.
+// Routes (signed-in only):
+//   #/dashboard          (default)
+//   #/kids               kids list page (with optional ?filter query string)
+//   #/kids/new           registration form
+//   #/kids/{kidId}       profile view
 //
-// The shell is the only file that calls renderLoginView() and the only file
-// that calls signOut(). Everyone else just lives inside whatever view the
-// shell has rendered.
+// Hash query-string handling:
+//   The kids list serializes its filters into the hash as a query string,
+//   e.g. #/kids?status=blocked&q=khoury. routeFromHash() splits the path off
+//   the query string before matching routes. The query-string parsing happens
+//   inside the list view itself (via its own URLSearchParams call) — the shell
+//   doesn't care what the keys are.
+//
+// Cleanup model:
+//   - currentViewCleanup: cleanup for the OUTER view (login, wizard, layout,
+//     setup-incomplete). Lives across page navigations within a signed-in
+//     session. Cleared on auth-state changes.
+//   - currentPageCleanup: cleanup for the INNER routed page (dashboard,
+//     register-view, profile-view, list-view). Cleared on every hash navigation.
 
 import {
   onAuthChange,
@@ -23,35 +31,45 @@ import {
 import { renderLoginView } from "../auth/login-view.js";
 import { renderWizardView } from "../setup/wizard-view.js";
 import { isSetupComplete } from "../setup/setup-status.js";
+import { renderRegisterKidView } from "../kids/register-view.js";
+import { renderKidProfileView } from "../kids/profile-view.js";
+import { renderKidsListView } from "../kids/kids-list-view.js";
+import { renderDevToolsSection } from "../dev/dev-tools-section.js";
 import { strings } from "../strings/en.js";
 import { showToast } from "./toast.js";
-// Reference to the cleanup function returned by the currently-mounted view.
-// We call this before swapping views so listeners don't leak.
+
 let currentViewCleanup = null;
-
-// The DOM element the shell renders into. Set on mount.
+let currentPageCleanup = null;
 let rootEl = null;
+let signedInProfile = null;
+let pageMount = null;
+let hashChangeHandler = null;
+// We track the last-routed PATH (not the full hash with query string) so a
+// query-string-only change (e.g. typing in the search box, which calls
+// history.replaceState to update filter state in the URL) does NOT cause
+// the list view to be torn down and re-mounted on every keystroke.
+let lastRoutedPath = null;
 
-/**
- * Mount the shell into the given root element.
- * Called once from index.html. After this, the shell drives everything.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Mount
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function mountShell(targetEl) {
   ensureShellStyles();
   rootEl = targetEl;
 
   renderLoading();
 
-  // Subscribe to auth state. The callback fires:
-  //   - immediately, with the current state (null if signed out, user if remembered)
-  //   - again on every sign-in / sign-out
   onAuthChange(async (user) => {
+    detachHashChange();
+    signedInProfile = null;
+    lastRoutedPath = null;
+
     if (!user) {
       swapView(renderLoginView);
       return;
     }
 
-    // User is authenticated. Look up their profile + role.
     let result;
     try {
       result = await getCurrentUserProfile();
@@ -63,14 +81,12 @@ export function mountShell(targetEl) {
     }
 
     if (!result.ok) {
-      // Profile missing or inactive. Show the message, sign out, end up at login.
       const message = strings.errors[result.errorKey] || strings.errors.unexpected;
       showToast(message, "error");
       await signOut();
       return;
     }
 
-    // Profile loaded. Now check whether onboarding has been completed.
     let setupDone;
     try {
       setupDone = await isSetupComplete();
@@ -82,13 +98,13 @@ export function mountShell(targetEl) {
     }
 
     if (!setupDone) {
-      // Onboarding not finished. Only SuperAdmin can run the wizard.
-      // Other roles see a "setup not finished" screen with a sign-out button.
       if (result.profile.role === "SuperAdmin") {
         swapView((container) =>
           renderWizardView(container, result.profile, () => {
-            // Wizard finished. Re-render: setup is now complete, dashboard appears.
-            renderSignedInLayout(result.profile);
+            signedInProfile = result.profile;
+            renderSignedInLayout();
+            attachHashChange();
+            navigateTo(currentRouteOrDefault());
           })
         );
       } else {
@@ -97,8 +113,120 @@ export function mountShell(targetEl) {
       return;
     }
 
-    // All good — render dashboard with header.
-    renderSignedInLayout(result.profile);
+    signedInProfile = result.profile;
+    renderSignedInLayout();
+    attachHashChange();
+    navigateTo(currentRouteOrDefault());
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Routing
+// ─────────────────────────────────────────────────────────────────────────────
+
+function currentRouteOrDefault() {
+  const hash = window.location.hash || "";
+  if (hash.startsWith("#/")) return hash;
+  return "#/dashboard";
+}
+
+function navigateTo(hash) {
+  if (window.location.hash !== hash) {
+    window.location.hash = hash;
+    return;
+  }
+  routeFromHash();
+}
+
+function attachHashChange() {
+  if (hashChangeHandler) return;
+  hashChangeHandler = () => routeFromHash();
+  window.addEventListener("hashchange", hashChangeHandler);
+}
+
+function detachHashChange() {
+  if (!hashChangeHandler) return;
+  window.removeEventListener("hashchange", hashChangeHandler);
+  hashChangeHandler = null;
+}
+
+/**
+ * Split a hash into its path and query-string parts.
+ *   "#/kids?status=blocked"  -> { path: "#/kids", query: "status=blocked" }
+ *   "#/dashboard"            -> { path: "#/dashboard", query: "" }
+ */
+function splitHash(hash) {
+  const qIdx = hash.indexOf("?");
+  if (qIdx === -1) return { path: hash, query: "" };
+  return { path: hash.slice(0, qIdx), query: hash.slice(qIdx + 1) };
+}
+
+function routeFromHash() {
+  if (!signedInProfile) return;
+  if (!pageMount) {
+    // Layout not in place (race during sign-in transitions). Re-mount.
+    renderSignedInLayout();
+    if (!pageMount) return;
+  }
+
+  const fullHash = window.location.hash || "#/dashboard";
+  const { path } = splitHash(fullHash);
+
+  // If only the query string changed, the page is already correct — don't
+  // re-mount it. The page itself listens to hashchange to react to filter
+  // changes from Back/Forward navigation.
+  if (path === lastRoutedPath) return;
+  lastRoutedPath = path;
+
+  // Tear down the inner page only — NOT the layout.
+  if (currentPageCleanup) {
+    try { currentPageCleanup(); } catch (e) { console.error("[shell] page cleanup threw:", e); }
+    currentPageCleanup = null;
+  }
+  pageMount.innerHTML = "";
+
+  if (path === "#/kids/new") {
+    setActiveNav("kids");
+    currentPageCleanup = renderRegisterKidView(pageMount, signedInProfile, {
+      onCancel: () => navigateTo("#/kids"),
+      onRegistered: (kidId) => navigateTo(`#/kids/${encodeURIComponent(kidId)}`)
+    });
+    return;
+  }
+
+  if (path === "#/kids") {
+    setActiveNav("kids");
+    currentPageCleanup = renderKidsListView(pageMount, signedInProfile, {
+      onOpenKid: (kidId) => navigateTo(`#/kids/${encodeURIComponent(kidId)}`),
+      onRegisterKid: () => navigateTo("#/kids/new")
+    });
+    return;
+  }
+
+  const kidMatch = path.match(/^#\/kids\/([^\/]+)$/);
+  if (kidMatch) {
+    setActiveNav("kids");
+    const kidId = decodeURIComponent(kidMatch[1]);
+    currentPageCleanup = renderKidProfileView(pageMount, kidId, {
+      onBack: () => navigateTo("#/kids"),
+      onRegisterAnother: () => navigateTo("#/kids/new")
+    });
+    return;
+  }
+
+  setActiveNav(null);
+  renderDashboardPlaceholder(pageMount);
+}
+
+function setActiveNav(key) {
+  if (!rootEl) return;
+  const buttons = rootEl.querySelectorAll("[data-nav-key]");
+  buttons.forEach((btn) => {
+    if (btn.getAttribute("data-nav-key") === key) {
+      btn.classList.add("aq-nav__btn--active");
+    } else {
+      btn.classList.remove("aq-nav__btn--active");
+    }
   });
 }
 
@@ -106,16 +234,18 @@ export function mountShell(targetEl) {
 // View rendering
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Tear down the current view (if any), then render a new one.
- * `renderFn` is a function that takes a container element and returns a cleanup function.
- */
 function swapView(renderFn) {
+  if (currentPageCleanup) {
+    try { currentPageCleanup(); } catch (e) { console.error("[shell] page cleanup threw:", e); }
+    currentPageCleanup = null;
+  }
   if (currentViewCleanup) {
     try { currentViewCleanup(); } catch (e) { console.error("[shell] cleanup threw:", e); }
     currentViewCleanup = null;
   }
   rootEl.innerHTML = "";
+  pageMount = null;
+  lastRoutedPath = null;
   currentViewCleanup = renderFn(rootEl) || null;
 }
 
@@ -126,26 +256,36 @@ function renderLoading() {
     </div>
   `;
   currentViewCleanup = null;
+  currentPageCleanup = null;
+  pageMount = null;
+  lastRoutedPath = null;
 }
 
-/**
- * Render the signed-in layout: header + dashboard placeholder.
- * Today the dashboard is just a card showing email + role. Real dashboard later.
- */
-function renderSignedInLayout(profile) {
-  // Tear down whatever was there.
+function renderSignedInLayout() {
+  if (currentPageCleanup) {
+    try { currentPageCleanup(); } catch (e) { console.error("[shell] page cleanup threw:", e); }
+    currentPageCleanup = null;
+  }
   if (currentViewCleanup) {
     try { currentViewCleanup(); } catch (e) { console.error("[shell] cleanup threw:", e); }
     currentViewCleanup = null;
   }
 
+  const profile = signedInProfile;
   const loggedInAs = strings.shell.loggedInAs.replace("{email}", profile.email);
   const roleLine   = strings.shell.role.replace("{role}", profile.role || "—");
 
   rootEl.innerHTML = `
     <div class="aq-app">
       <header class="aq-header">
-        <div class="aq-header__brand">${strings.app.name}</div>
+        <a class="aq-header__brand" href="#/dashboard">${strings.app.name}</a>
+
+        <nav class="aq-nav">
+          <a class="aq-nav__btn" data-nav-key="kids" href="#/kids">
+            ${strings.shell.navKids}
+          </a>
+        </nav>
+
         <div class="aq-header__user">
           <div class="aq-header__user-line">${escapeHtml(loggedInAs)}</div>
           <div class="aq-header__user-role">${escapeHtml(roleLine)}</div>
@@ -155,14 +295,12 @@ function renderSignedInLayout(profile) {
         </button>
       </header>
 
-      <main class="aq-main">
-        <div class="aq-card">
-          <h2 class="aq-card__title">${strings.dashboard.placeholderTitle}</h2>
-          <p class="aq-card__body">${strings.dashboard.placeholderBody}</p>
-        </div>
-      </main>
+      <main class="aq-main" id="aq-page-mount"></main>
     </div>
   `;
+
+  pageMount = rootEl.querySelector("#aq-page-mount");
+  lastRoutedPath = null;
 
   const logoutBtn = rootEl.querySelector("#aq-logout-btn");
   async function handleLogout() {
@@ -170,7 +308,6 @@ function renderSignedInLayout(profile) {
     try {
       await signOut();
       showToast(strings.toast.signedOut, "info");
-      // onAuthChange will fire and swap us back to the login view.
     } catch (err) {
       console.error("[shell] signOut failed:", err);
       showToast(strings.errors.unexpected, "error");
@@ -179,18 +316,44 @@ function renderSignedInLayout(profile) {
   }
   logoutBtn.addEventListener("click", handleLogout);
 
-  // Set the cleanup so a future view swap detaches the listener.
   currentViewCleanup = function cleanup() {
+    if (currentPageCleanup) {
+      try { currentPageCleanup(); } catch (e) { console.error("[shell] page cleanup threw:", e); }
+      currentPageCleanup = null;
+    }
     logoutBtn.removeEventListener("click", handleLogout);
+    detachHashChange();
+    pageMount = null;
+    lastRoutedPath = null;
   };
 }
 
-/**
- * Render the "setup not finished" screen for non-SuperAdmin users when
- * the onboarding wizard hasn't been completed yet.
- * They get a friendly message and a sign-out button — that's it.
- */
+function renderDashboardPlaceholder(mount) {
+  mount.innerHTML = `
+    <div class="aq-dashboard-stack">
+      <div class="aq-card">
+        <h2 class="aq-card__title">${strings.dashboard.placeholderTitle}</h2>
+        <p class="aq-card__body">${strings.dashboard.placeholderBody}</p>
+      </div>
+      <div id="aq-dashboard-dev-mount"></div>
+    </div>
+  `;
+
+  const devMount = mount.querySelector("#aq-dashboard-dev-mount");
+  const devCleanup = renderDevToolsSection(devMount, signedInProfile);
+
+  currentPageCleanup = function cleanup() {
+    if (devCleanup) {
+      try { devCleanup(); } catch (e) { console.error("[shell] dev cleanup threw:", e); }
+    }
+  };
+}
+
 function renderSetupIncomplete(profile) {
+  if (currentPageCleanup) {
+    try { currentPageCleanup(); } catch (e) { console.error("[shell] page cleanup threw:", e); }
+    currentPageCleanup = null;
+  }
   if (currentViewCleanup) {
     try { currentViewCleanup(); } catch (e) { console.error("[shell] cleanup threw:", e); }
     currentViewCleanup = null;
@@ -234,17 +397,14 @@ function renderSetupIncomplete(profile) {
   currentViewCleanup = function cleanup() {
     signOutBtn.removeEventListener("click", handleLogout);
   };
+  pageMount = null;
+  lastRoutedPath = null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilities
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Escape user-controlled strings before inserting into innerHTML.
- * Email comes from Firebase Auth (already validated as an email shape) but
- * we escape anyway — defense in depth, costs nothing.
- */
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, "&amp;")
@@ -288,6 +448,35 @@ function ensureShellStyles() {
       font-weight: 700;
       color: var(--ink, #0f172a);
       letter-spacing: -0.02em;
+      text-decoration: none;
+    }
+
+    .aq-nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: 8px;
+    }
+
+    .aq-nav__btn {
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink-2, #334155);
+      text-decoration: none;
+      transition: background-color 120ms ease, color 120ms ease;
+    }
+    .aq-nav__btn:hover {
+      background: var(--bg, #f8fafc);
+    }
+    .aq-nav__btn--active {
+      background: var(--accent, #0ea5e9);
+      color: white;
+    }
+    .aq-nav__btn--active:hover {
+      background: #0284c7;
     }
 
     .aq-header__user {
@@ -373,6 +562,14 @@ function ensureShellStyles() {
       margin-top: 20px;
       display: flex;
       justify-content: center;
+    }
+
+    .aq-dashboard-stack {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
     }
 
     .aq-loading {
