@@ -2942,5 +2942,151 @@ with BlockHistory entries, soft-delete, restore, photo replace.
 Permission gates: SuperAdmin for all destructive actions; Admin for
 block/unblock and photo replace; Operator gets nothing destructive.
 
+### §39.13 — 2026-04-29 — Destructive actions on kids
+
+**Goal:** Add the destructive actions deferred from §39.12 — block /
+unblock with BlockHistory, soft-delete, restore from soft-delete, photo
+replace, photo remove. Plus the role-based gating that constrains who
+can do what.
+
+**Permission model decided this session (deviates from initial proposal):**
+
+| Action               | Operator | Admin | SuperAdmin |
+|----------------------|----------|-------|------------|
+| Register new kid     | ✅       | ✅    | ✅         |
+| Edit kid             | ❌       | ✅    | ✅         |
+| Photo replace/remove | ❌       | ✅    | ✅         |
+| Block / unblock      | ❌       | ✅    | ✅         |
+| Soft-delete          | ❌       | ❌    | ✅         |
+| Restore deleted      | ❌       | ❌    | ✅         |
+| View deleted         | ❌       | ❌    | ✅         |
+
+Operators are register-only. The reasoning: kid records carry liability,
+and edits should go through someone with policy training. If real-world
+friction proves too high we can loosen later — easier than tightening.
+
+**Files added:**
+- `public/src/auth/permissions.js` — pure function helpers:
+  isAdmin, isSuperAdmin, canEditKids, canReplaceKidPhoto, canBlockKids,
+  canSoftDeleteKids, canRestoreKids, canViewDeletedKids. UI consults
+  these to hide/show buttons; rules enforce server-side independently.
+- `public/src/ui/confirm.js` — generic confirmation modal that returns
+  a Promise. Supports optional reason textarea (with min/max length and
+  required-flag) and optional "permanent" checkbox. Esc cancels,
+  backdrop click cancels, Enter confirms unless inside the textarea.
+  Single active modal at a time. New `.aq-button--danger` style added.
+
+**Files modified:**
+- `public/src/kids/kids-service.js` — added six new service functions:
+  blockKid, unblockKid, softDeleteKid, restoreKid, replaceKidPhoto,
+  removeKidPhoto. Block/unblock use Firestore transactions because they
+  need read-modify-write on the BlockHistory array. Block appends a new
+  entry; unblock finds the most-recent entry without UnblockedAt and
+  fills in UnblockedAt + UnblockedBy. Field-set discipline (each
+  function writes a disjoint set of fields) means concurrent edits +
+  destructive actions can't corrupt each other — see §39.13 design note.
+- `public/src/kids/profile-view.js` — rewritten. Now takes `profile` as
+  a 3rd argument (shell update below). Renders gated buttons: Edit (Admin+),
+  Block/Unblock (Admin+), Delete (SuperAdmin only). New BlockHistory
+  section displays each block entry with reason, blocked-on date, and
+  resolved-on date if unblocked. Status pill is now red when blocked,
+  green when active. Subscribes to the kid doc via onSnapshot so changes
+  from one tab reflect immediately in another.
+- `public/src/kids/edit-view.js` — photo section now interactive when
+  canReplaceKidPhoto(profile). Replace button triggers file picker;
+  Remove button triggers a confirm modal. Both call kids-service
+  directly (not via the form's onSubmit) since they're independent
+  actions.
+- `public/src/ui/shell.js` — passes signedInProfile to renderKidProfileView
+  (NEW 3rd arg). Added route guard: Operators typing #/kids/{id}/edit
+  in the URL get bounced to #/kids/{id} with toast "Only admins can
+  edit kid records."
+- `public/src/kids/kids-list-view.js` — Restore button on deleted-kid
+  cards (SuperAdmin only). Renders inside the card with stopPropagation
+  so the card click (which opens the kid) doesn't fire. Confirm dialog
+  + restoreKid call.
+- `public/src/strings/en.js` — added kids.profile.editButton/blockButton/
+  unblockButton/deleteButton, full block/unblock/delete confirm copy
+  block, blockHistory* labels, kids.edit.photoReplaceButton/etc + photo
+  confirm copy, kidsList.restoreButton + restore confirm copy, toast
+  keys for all six actions, errors.editForbidden + 9 new error keys.
+- `firestore.rules` — added explicit kids match block: read by tenant
+  member, create by Operator+Admin+SuperAdmin, update by Admin+SuperAdmin,
+  delete forbidden (soft-delete via update). Same caveat as editLocks
+  in §39.11: catch-all rule below still ORs with these, so server-side
+  enforcement is documented intent only until the catch-all is tightened.
+- `firestore.indexes.json` — added Status+SearchKey index for the
+  "Show deleted" query path (when Deleted filter is removed, the existing
+  Deleted+Status+SearchKey index doesn't apply).
+
+**Bugs found & fixed during testing:**
+
+1. Profile page initially showed no Edit/Block/Delete buttons even for
+   SuperAdmin, plus a "Cannot read properties of undefined (reading
+   'onBack')" error. Root cause: shell.js was calling
+   renderKidProfileView with only 3 args (kidId, deps) instead of 4
+   (kidId, profile, deps). The `deps` object got bound to the new
+   `profile` parameter; profile was undefined; canEditKids returned
+   false; deps was undefined; clicking Back crashed. Fix: applied
+   shell.js Edit A2 from edits-to-apply.txt.
+
+2. After C1 was applied to en.js, "undefined" appeared as button labels
+   for Block and Delete, plus crash on click with "Cannot read
+   properties of undefined (reading 'replace')". Root cause: missing
+   string keys (blockButton, deleteButton, confirmBlockBody, etc).
+   Fix: applied edits C1 + C2 + C3 + C4 + C5 to en.js.
+
+3. After deploying, "Show deleted" toggle on kids list threw
+   FirebaseError "The query requires an index". Root cause: turning on
+   "Show deleted" makes the query drop the Deleted filter, leaving
+   Status+SearchKey alone — no existing composite index covered that
+   combination. Fix: added the Status+SearchKey index to
+   firestore.indexes.json and deployed via CLI.
+
+**Tested behaviors (all green):**
+1. Block kid: confirm modal with required reason field + permanent
+   checkbox; profile flips to red Status:Blocked; BlockHistory entry
+   appears with reason+timestamp; toast shown.
+2. Unblock kid: confirm modal; status flips back to green; BlockHistory
+   entry now shows "Resolved" with unblock timestamp.
+3. Delete kid: confirm modal; toast; bounce to kids list; kid no longer
+   visible by default.
+4. Restore from kids list: "Show deleted" toggle reveals deleted kid
+   with Restore button on card; click → confirm → kid back in active list.
+5. Photo replace from edit-view: file picker → upload → photo updates
+   immediately + persists across hard refresh.
+6. Photo remove from edit-view: confirm modal → photo replaced with
+   initials in frame; profile shows the kid without photo.
+
+**Tested-but-deferred:**
+- Operator route guard (Test 10): not tested because no Operator user
+  exists in dev. The check `canEditKids(signedInProfile)` and the toast
+  redirect are both straightforward; will verify when an Operator is
+  created in a later session.
+
+**Known issues (deferred):**
+- Server-side rule enforcement for kids is intent-only, same as
+  editLocks per §39.11. The catch-all OR's with the new rules. Becomes
+  defense-in-depth when the catch-all is tightened. UI gating + service-
+  layer reads of profile.role still prevent unauthorized actions today
+  for normal users; the gap is "what if a malicious tenant member uses
+  the Firestore SDK directly to bypass the UI."
+- Photo replacement during a concurrent edit: edit-view replaces photos
+  via direct service calls (not via the form's onSubmit), bypassing
+  the lock's save flow. Photo replace and form-text updates touch
+  disjoint fields so corruption is impossible, but the user might be
+  surprised by a photo change happening while another admin is in the
+  edit form. Acceptable trade-off; field-set disjointness is the
+  guarantee.
+
+**Next session(s):**
+- Subscriptions module per §15. New collection per kid; new sub-
+  resource of the playground operation.
+- Sibling linking (FamilyID join across kids).
+- School/grade catalog management (currently free-text + autocomplete
+  from existing kid data).
+- Errors viewer in Admin Panel (the writer is in place since §39.8;
+  reader is overdue).
+
 
 **END OF MASTER PROMPT v6.2**

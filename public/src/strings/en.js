@@ -306,9 +306,67 @@ export const strings = {
       photoNotImage: "Selected file is not an image."
     },
 
+    edit: {
+      pageTitle: "Edit kid",
+      pageSubtitle: "Update this kid's details. Photo replacement comes in a later update.",
+ 
+      photoCaptionReadOnly: "Only admins can change photos.",
+
+    photoAddButton:     "Add photo",
+    photoReplaceButton: "Replace photo",
+    photoRemoveButton:  "Remove photo",
+    photoReplacing:     "Uploading…",
+    photoRemoving:      "Removing…",
+
+    confirmRemovePhotoTitle:   "Remove this photo?",
+    confirmRemovePhotoBody:    "Remove the current photo for {name}? You can upload a new one anytime.",
+    confirmRemovePhotoConfirm: "Remove photo",
+    confirmRemovePhotoCancel:  "Cancel",
+ 
+      cancelButton: "Cancel",
+      saveButton: "Save changes",
+      savingButton: "Saving…",
+ 
+      lockedTitle: "Someone is already editing this kid",
+      lockedBody: "{name} has the edit form open. Your changes would overwrite theirs, so editing is locked until they finish.",
+      lockedWaiting: "Waiting for the lock to release…",
+      lockedNowAvailable: "The lock is now available. You can start editing.",
+      lockedBack: "Back to profile",
+      lockedRetry: "Start editing"
+    },
+
     profile: {
       pageTitle: "Kid profile",
       backToDashboard: "Back to dashboard",
+      editButton: "Edit",
+      blockButton:    "Block",
+    unblockButton:  "Unblock",
+    deleteButton:   "Delete",
+
+    confirmCancel:  "Cancel",
+
+    confirmBlockTitle:    "Block this kid?",
+    confirmBlockBody:     "{name} will be marked as Blocked. Staff can still see the profile, but the kid won't be able to check in. Provide a reason for the audit log.",
+    confirmBlockConfirm:  "Block kid",
+    blockReasonLabel:     "Reason",
+    blockReasonPlaceholder: "e.g. Repeated rough play with younger kids — parent informed.",
+    blockReasonRequired:  "A reason is required when blocking a kid.",
+    permanentBlockLabel:  "Permanent block",
+    permanentBlockHelp:   "Permanent blocks require explicit unmarking before unblocking. Use only for serious safety concerns.",
+
+    confirmUnblockTitle:   "Unblock this kid?",
+    confirmUnblockBody:    "{name} will be marked as Active again. The block history is preserved.",
+    confirmUnblockConfirm: "Unblock kid",
+
+    confirmDeleteTitle:    "Delete this kid?",
+    confirmDeleteBody:     "{name} will be soft-deleted. The record can be restored from the kids list with \"Show deleted\" turned on.",
+    confirmDeleteConfirm:  "Delete kid",
+
+    blockHistorySection:    "Block history",
+    blockHistoryCurrent:    "Currently blocked",
+    blockHistoryPast:       "Resolved",
+    blockHistoryPermanent:  "Permanent",
+    blockHistoryResolvedOn: "Unblocked on {date}.",
       registerAnother: "Register another kid",
 
       // Sections
@@ -413,6 +471,13 @@ export const strings = {
     noMatchTitle: "No kids match these filters",
     noMatchBody: "Try clearing filters or adjusting your search.",
     clearFilters: "Clear filters",
+    restoreButton:  "Restore",
+    thisKid:        "this kid",
+
+    confirmRestoreTitle:   "Restore this kid?",
+    confirmRestoreBody:    "{name} will be restored to the active list. Block history and other data are preserved.",
+    confirmRestoreConfirm: "Restore kid",
+    confirmRestoreCancel:  "Cancel",
 
     errorTitle: "Could not load the kids list"
   },
@@ -420,6 +485,9 @@ export const strings = {
 editLocks: {
     // Generic
     unknownHolder: "Another staff member",
+
+    autoExitedToast: "Your edit session ended due to inactivity. Changes were not saved.",
+    lockLostToast: "Your edit lock was released by an administrator. Changes were not saved.",
 
     // Warning modal (shown by the service when inactivity timer fires)
     warningTitle: "Are you still there?",
@@ -513,6 +581,18 @@ editLocks: {
     // Kids module
     notSignedIn: "Your session has ended. Please sign in again.",
     kidWriteFailed: "Could not save the kid. Please try again.",
+    editForbidden:        "Only admins and super-admins can edit kid records.",
+
+    blockReasonRequired:  "A reason is required when blocking a kid.",
+    blockReasonTooLong:   "Block reason is too long (max 500 characters).",
+    kidBlockFailed:       "Could not block this kid. Please try again.",
+    kidUnblockFailed:     "Could not unblock this kid. Please try again.",
+    kidDeleteFailed:      "Could not delete this kid. Please try again.",
+    kidRestoreFailed:     "Could not restore this kid. Please try again.",
+    photoMissing:         "No photo file was selected.",
+    photoReplaceFailed:   "Could not replace the photo. Please try again.",
+    photoRemoveFailed:    "Could not remove the photo. Please try again.",
+    
     kidReadFailed: "Could not load the kid. Please try again.",
     kidNotFound: "That kid was not found.",
     kidIdMissing: "Missing kid ID.",
@@ -530,7 +610,14 @@ editLocks: {
   toast: {
     signedOut: "You have been signed out.",
     setupComplete: "Setup complete! Welcome to Aquaria.",
-    kidRegistered: "{name} registered."
+    kidRegistered: "{name} registered.",
+    kidUpdated: "Saved changes for {name}.",
+    kidBlocked:     "{name} blocked.",
+    kidUnblocked:   "{name} unblocked.",
+    kidDeleted:     "{name} deleted.",
+    kidRestored:    "{name} restored.",
+    photoReplaced:  "Photo updated.",
+    photoRemoved:   "Photo removed.",
   }
 
 };

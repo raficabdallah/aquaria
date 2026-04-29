@@ -33,6 +33,7 @@ import { renderWizardView } from "../setup/wizard-view.js";
 import { isSetupComplete } from "../setup/setup-status.js";
 import { renderRegisterKidView } from "../kids/register-view.js";
 import { renderKidProfileView } from "../kids/profile-view.js";
+import { renderEditKidView } from "../kids/edit-view.js";
 import { renderKidsListView } from "../kids/kids-list-view.js";
 import { renderDevToolsSection } from "../dev/dev-tools-section.js";
 import { strings } from "../strings/en.js";
@@ -203,16 +204,38 @@ function routeFromHash() {
     return;
   }
 
-  const kidMatch = path.match(/^#\/kids\/([^\/]+)$/);
-  if (kidMatch) {
+// Edit route MUST be checked BEFORE the profile route, because the
+  // profile pattern would also match "abc/edit" as a kid ID otherwise.
+  const editMatch = path.match(/^#\/kids\/([^\/]+)\/edit$/);
+  if (editMatch) {
     setActiveNav("kids");
-    const kidId = decodeURIComponent(kidMatch[1]);
-    currentPageCleanup = renderKidProfileView(pageMount, kidId, {
-      onBack: () => navigateTo("#/kids"),
-      onRegisterAnother: () => navigateTo("#/kids/new")
+    const kidId = decodeURIComponent(editMatch[1]);
+    currentPageCleanup = renderEditKidView(pageMount, kidId, signedInProfile, {
+      onCancel: () => navigateTo(`#/kids/${encodeURIComponent(kidId)}`),
+      onSaved:  (id) => navigateTo(`#/kids/${encodeURIComponent(id)}`),
+      onRetry:  () => {
+        // Re-mount by toggling the path. We use a brief detour through #/kids
+        // and back so the shell's path-equality short-circuit doesn't suppress
+        // the re-mount.
+        const target = `#/kids/${encodeURIComponent(kidId)}/edit`;
+        lastRoutedPath = null; // force re-route even if path matches
+        navigateTo(target);
+      }
     });
     return;
   }
+ 
+const kidMatch = path.match(/^#\/kids\/([^\/]+)$/);
+if (kidMatch) {
+  setActiveNav("kids");
+  const kidId = decodeURIComponent(kidMatch[1]);
+  currentPageCleanup = renderKidProfileView(pageMount, kidId, signedInProfile, {
+    onBack: () => navigateTo("#/kids"),
+    onEdit: () => navigateTo(`#/kids/${encodeURIComponent(kidId)}/edit`),
+    onRegisterAnother: () => navigateTo("#/kids/new")
+  });
+  return;
+}
 
   setActiveNav(null);
   renderDashboardPlaceholder(pageMount);

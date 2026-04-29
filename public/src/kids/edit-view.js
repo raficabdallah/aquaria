@@ -1,19 +1,9 @@
 // public/src/kids/edit-view.js
 //
-// Kid edit form. Page chrome + read-only photo at top + the shared
-// kid-form module for the actual fields. Wires edit-locks for concurrent-
-// editor safety.
-//
-// Refactored in §39.12 Phase 2: form rendering, validation, and event
-// wiring moved into kid-form.js, consumed identically by register-view.
-// This file now owns:
-//   - The page chrome (header / title / cancel button reuses the
-//     .aq-page* styles from register-view).
-//   - Loading the kid via getKid() and rendering the read-only photo.
-//   - Acquiring the edit-lock; rendering the "locked by other" banner;
-//     subscribing to lock changes for the "now available" flip.
-//   - Calling updateKid() on submit.
-//   - Releasing the lock on save / cancel / auto-exit.
+// Kid edit form. Page chrome + photo section at top + the shared kid-form
+// module for the actual fields. Wires edit-locks for concurrent-editor
+// safety. Photo section supports replace + remove in §39.13 (was read-only
+// in §39.12).
 //
 // Public API:
 //   renderEditKidView(container, kidId, profile, deps)
@@ -23,15 +13,22 @@
 import { strings } from "../strings/en.js";
 import { showToast } from "../ui/toast.js";
 import { logError } from "../services/errors-service.js";
-import { getKid, updateKid } from "./kids-service.js";
+import {
+  getKid,
+  updateKid,
+  replaceKidPhoto,
+  removeKidPhoto
+} from "./kids-service.js";
 import { acquireLock, subscribeToLock } from "../services/edit-locks-service.js";
 import { renderKidForm } from "./kid-form.js";
+import { canReplaceKidPhoto } from "../auth/permissions.js";
+import { confirm } from "../ui/confirm.js";
+
+const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 
 export function renderEditKidView(container, kidId, profile, deps) {
   ensureEditStyles();
 
-  // Initial loading state. Two things happen concurrently: kid fetch +
-  // lock acquire. Both must succeed before we render the form.
   container.innerHTML = `
     <div class="aq-page">
       <header class="aq-page__header">
@@ -53,10 +50,18 @@ export function renderEditKidView(container, kidId, profile, deps) {
   const cancelTopBtn = container.querySelector("#aq-edit-cancel-top");
   const mount        = container.querySelector("#aq-edit-mount");
 
-  let cancelled = false;       // set true if cleanup runs before async finishes
-  let session = null;          // active LockSession
-  let unsubLockBanner = null;  // listener active while in "locked by other" state
-  let formCleanup = null;      // cleanup returned by renderKidForm
+  let cancelled = false;
+  let session = null;
+  let unsubLockBanner = null;
+  let formCleanup = null;
+  let photoHandlers = [];
+
+  function detachPhotoHandlers() {
+    for (const [el, evt, fn] of photoHandlers) {
+      try { el.removeEventListener(evt, fn); } catch (_) {}
+    }
+    photoHandlers = [];
+  }
 
   function handleCancelTop() {
     if (cancelled) return;
@@ -99,19 +104,12 @@ export function renderEditKidView(container, kidId, profile, deps) {
     const lockRes = await acquireLock({
       lockKey: kidId,
       profile,
-      // Use defaults — full 60s/15s. Production-realistic.
       onAutoExit: () => {
         if (cancelled) return;
         showToast(strings.editLocks.autoExitedToast, "info");
         deps.onCancel();
       },
       onLockChanged: (() => {
-        // The service fires this on the listener's first snapshot AND on
-        // every remote change. The first snapshot can arrive with
-        // state.exists === false if there's a race between our acquire
-        // transaction and the initial subscription sync — see §39.12 bug
-        // fix. We only treat "exists became false" as a force-release if
-        // we'd previously confirmed the lock existed.
         let seenExisting = false;
         return (state) => {
           if (cancelled) return;
@@ -157,7 +155,6 @@ export function renderEditKidView(container, kidId, profile, deps) {
     deps.onCancel();
   });
 
-  // ── Locked-by-other banner ──
   function renderLockedBanner(kid, heldBy) {
     const name = heldBy?.name || strings.editLocks.unknownHolder;
     mount.innerHTML = `
@@ -182,11 +179,9 @@ export function renderEditKidView(container, kidId, profile, deps) {
 
     function handleBack()  { deps.onCancel(); }
     function handleRetry() { deps.onRetry(); }
-
     backBtn.addEventListener("click", handleBack);
     retryBtn.addEventListener("click", handleRetry);
 
-    // Watch the lock; flip to "now available" when it goes away.
     unsubLockBanner = subscribeToLock(kidId, (state) => {
       if (cancelled) return;
       if (!state.exists || state.isExpired) {
@@ -196,39 +191,160 @@ export function renderEditKidView(container, kidId, profile, deps) {
     });
   }
 
-  // ── Lock acquired: render the form ──
   function renderForm(kid, lockSession) {
+    const allowPhotoEdit = canReplaceKidPhoto(profile);
     const photoUrl = kid.PhotoThumbnailURL || kid.PhotoURL || "";
+
     const photoHtml = photoUrl
-      ? `<img class="aq-edit-photo__img" src="${escapeAttr(photoUrl)}" alt="" />`
-      : `<div class="aq-edit-photo__initials">${escapeHtml(initials(kid.FirstName, kid.LastName))}</div>`;
+      ? `<img class="aq-edit-photo__img" id="aq-edit-photo-img" src="${escapeAttr(photoUrl)}" alt="" />`
+      : `<div class="aq-edit-photo__initials" id="aq-edit-photo-initials">${escapeHtml(initials(kid.FirstName, kid.LastName))}</div>`;
+
+    const photoControlsHtml = allowPhotoEdit ? `
+      <div class="aq-edit-photo__controls">
+        <label class="aq-button aq-button--ghost aq-edit-photo__file-button">
+          ${photoUrl ? strings.kids.edit.photoReplaceButton : strings.kids.edit.photoAddButton}
+          <input type="file" id="aq-edit-photo-input" accept="image/*" hidden />
+        </label>
+        ${photoUrl ? `<button type="button" class="aq-button aq-button--ghost" id="aq-edit-photo-remove">${strings.kids.edit.photoRemoveButton}</button>` : ""}
+        <span class="aq-edit-photo__error" id="aq-edit-photo-error" hidden></span>
+        <span class="aq-edit-photo__status" id="aq-edit-photo-status" hidden></span>
+      </div>
+    ` : `
+      <p class="aq-edit-photo__caption">${strings.kids.edit.photoCaptionReadOnly}</p>
+    `;
 
     mount.innerHTML = `
       <p class="aq-kid-form__subtitle">${strings.kids.edit.pageSubtitle}</p>
 
       <div class="aq-edit-photo">
         <div class="aq-edit-photo__frame">${photoHtml}</div>
-        <p class="aq-edit-photo__caption">${strings.kids.edit.photoCaption}</p>
+        ${photoControlsHtml}
       </div>
 
       <div id="aq-edit-form-mount"></div>
     `;
 
+    // Wire photo controls (admin+ only).
+    if (allowPhotoEdit) {
+      const photoInput  = mount.querySelector("#aq-edit-photo-input");
+      const photoRemove = mount.querySelector("#aq-edit-photo-remove");
+      const photoError  = mount.querySelector("#aq-edit-photo-error");
+      const photoStatus = mount.querySelector("#aq-edit-photo-status");
+
+      function showPhotoError(msg) {
+        photoError.textContent = msg;
+        photoError.hidden = false;
+        photoStatus.hidden = true;
+      }
+      function hidePhotoError() {
+        photoError.textContent = "";
+        photoError.hidden = true;
+      }
+      function showPhotoStatus(msg) {
+        photoStatus.textContent = msg;
+        photoStatus.hidden = false;
+        photoError.hidden = true;
+      }
+      function hidePhotoStatus() {
+        photoStatus.textContent = "";
+        photoStatus.hidden = true;
+      }
+
+      async function handlePhotoChange() {
+        const file = photoInput.files && photoInput.files[0];
+        if (!file) return;
+
+        if (!file.type.startsWith("image/")) {
+          showPhotoError(strings.kids.register.photoNotImage);
+          photoInput.value = "";
+          return;
+        }
+        if (file.size > PHOTO_MAX_BYTES) {
+          showPhotoError(strings.kids.register.photoTooLarge);
+          photoInput.value = "";
+          return;
+        }
+        hidePhotoError();
+        showPhotoStatus(strings.kids.edit.photoReplacing);
+
+        // Refresh lock activity since we're doing work.
+        if (lockSession) lockSession.recordActivity();
+
+        const res = await replaceKidPhoto(kidId, file, profile);
+        photoInput.value = "";
+        if (!res.ok) {
+          hidePhotoStatus();
+          showPhotoError(strings.errors[res.errorKey] || strings.errors.unexpected);
+          return;
+        }
+
+        // Refresh the displayed photo. Re-fetch the kid to get the new URL.
+        const refreshed = await getKid(kidId);
+        if (refreshed.ok) {
+          const newUrl = refreshed.kid.PhotoThumbnailURL || refreshed.kid.PhotoURL || "";
+          const frame = mount.querySelector(".aq-edit-photo__frame");
+          if (frame && newUrl) {
+            frame.innerHTML = `<img class="aq-edit-photo__img" src="${escapeAttr(newUrl)}" alt="" />`;
+          }
+        }
+        hidePhotoStatus();
+        showToast(strings.toast.photoReplaced, "success");
+      }
+
+      async function handlePhotoRemove() {
+        const res = await confirm({
+          title:        strings.kids.edit.confirmRemovePhotoTitle,
+          body:         strings.kids.edit.confirmRemovePhotoBody.replace("{name}", `${kid.FirstName} ${kid.LastName}`.trim()),
+          confirmLabel: strings.kids.edit.confirmRemovePhotoConfirm,
+          cancelLabel:  strings.kids.edit.confirmRemovePhotoCancel,
+          danger:       true
+        });
+        if (!res.confirmed) return;
+
+        if (lockSession) lockSession.recordActivity();
+        showPhotoStatus(strings.kids.edit.photoRemoving);
+
+        const result = await removeKidPhoto(kidId, profile);
+        if (!result.ok) {
+          hidePhotoStatus();
+          showPhotoError(strings.errors[result.errorKey] || strings.errors.unexpected);
+          return;
+        }
+        hidePhotoStatus();
+        showToast(strings.toast.photoRemoved, "success");
+
+        // Replace frame with initials.
+        const frame = mount.querySelector(".aq-edit-photo__frame");
+        if (frame) {
+          frame.innerHTML = `<div class="aq-edit-photo__initials">${escapeHtml(initials(kid.FirstName, kid.LastName))}</div>`;
+        }
+        // Hide the Remove button (no photo to remove now). Update label of replace.
+        const removeBtn = mount.querySelector("#aq-edit-photo-remove");
+        if (removeBtn) removeBtn.style.display = "none";
+        const fileBtn = mount.querySelector(".aq-edit-photo__file-button");
+        if (fileBtn) fileBtn.firstChild.nodeValue = "\n          " + strings.kids.edit.photoAddButton + "\n          ";
+      }
+
+      photoInput.addEventListener("change", handlePhotoChange);
+      photoHandlers.push([photoInput, "change", handlePhotoChange]);
+      if (photoRemove) {
+        photoRemove.addEventListener("click", handlePhotoRemove);
+        photoHandlers.push([photoRemove, "click", handlePhotoRemove]);
+      }
+    }
+
     const formMount = mount.querySelector("#aq-edit-form-mount");
 
-    // The shared form needs initialData in flat-field shape. Pull it from
-    // the kid doc (with PascalCase fields) into camelCase that kid-form
-    // expects.
     const initialData = {
       firstName:        kid.FirstName,
       lastName:         kid.LastName,
-      dateOfBirth:      kid.DateOfBirth,    // Firestore Timestamp; kid-form handles
+      dateOfBirth:      kid.DateOfBirth,
       gender:           kid.Gender,
       schoolType:       kid.SchoolType,
       school:           kid.School,
       grade:            kid.Grade,
       parentName:       kid.ParentName,
-      phone:            kid.Phone,           // E.164; kid-form splits into dial+local
+      phone:            kid.Phone,
       emergencyContact: kid.EmergencyContact,
       city:             kid.City,
       address:          kid.Address,
@@ -245,7 +361,6 @@ export function renderEditKidView(container, kidId, profile, deps) {
         if (lockSession) lockSession.recordActivity();
       },
       onCancel: async () => {
-        // Release the lock before navigating away.
         if (lockSession) {
           await lockSession.release().catch(() => {});
           lockSession = null;
@@ -260,7 +375,6 @@ export function renderEditKidView(container, kidId, profile, deps) {
         const name = (formData.firstName + " " + formData.lastName).trim();
         showToast(strings.toast.kidUpdated.replace("{name}", name), "success");
 
-        // Release the lock, then hand off to the shell.
         if (lockSession) {
           await lockSession.release().catch(() => {});
           lockSession = null;
@@ -272,10 +386,10 @@ export function renderEditKidView(container, kidId, profile, deps) {
     });
   }
 
-  // ── Cleanup ──
   return function cleanup() {
     cancelled = true;
     cancelTopBtn.removeEventListener("click", handleCancelTop);
+    detachPhotoHandlers();
     if (formCleanup) {
       try { formCleanup(); } catch (_) {}
       formCleanup = null;
@@ -334,7 +448,7 @@ function ensureEditStyles() {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px;
+      gap: 12px;
       padding: 20px;
       background: var(--card, #ffffff);
       border: 1px solid var(--line, #e2e8f0);
@@ -342,8 +456,8 @@ function ensureEditStyles() {
       box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
     }
     .aq-edit-photo__frame {
-      width: 80px;
-      height: 80px;
+      width: 96px;
+      height: 96px;
       border-radius: 50%;
       overflow: hidden;
       background: var(--bg, #f8fafc);
@@ -361,12 +475,31 @@ function ensureEditStyles() {
       align-items: center;
       justify-content: center;
       font-family: 'DM Sans', system-ui, sans-serif;
-      font-size: 28px;
+      font-size: 32px;
       font-weight: 600;
       color: var(--mute, #64748b);
     }
     .aq-edit-photo__caption {
       margin: 0;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 12px;
+      color: var(--mute, #64748b);
+    }
+    .aq-edit-photo__controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .aq-edit-photo__file-button {
+      cursor: pointer;
+    }
+    .aq-edit-photo__error {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 12px;
+      color: var(--danger, #ef4444);
+    }
+    .aq-edit-photo__status {
       font-family: 'DM Sans', system-ui, sans-serif;
       font-size: 12px;
       color: var(--mute, #64748b);
