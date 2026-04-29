@@ -24,9 +24,14 @@ export function renderKidProfileView(container, kidId, deps) {
     <div class="aq-page">
       <header class="aq-page__header">
         <h1 class="aq-page__title">${strings.kids.profile.pageTitle}</h1>
-        <button type="button" class="aq-button aq-button--ghost" id="aq-kid-profile-back">
-          ${strings.kids.profile.backToDashboard}
-        </button>
+        <div class="aq-page__header-actions">
+          <button type="button" class="aq-button aq-button--ghost" id="aq-kid-profile-edit">
+            ${strings.kids.profile.editButton}
+          </button>
+          <button type="button" class="aq-button aq-button--ghost" id="aq-kid-profile-back">
+            ${strings.kids.profile.backToDashboard}
+          </button>
+        </div>
       </header>
       <main class="aq-page__main">
         <div class="aq-kid-profile" id="aq-kid-profile-body">
@@ -39,10 +44,13 @@ export function renderKidProfileView(container, kidId, deps) {
   `;
 
   const backBtn = container.querySelector("#aq-kid-profile-back");
+  const editBtn = container.querySelector("#aq-kid-profile-edit");
   const body    = container.querySelector("#aq-kid-profile-body");
-
+ 
   function handleBack() { deps.onBack(); }
+  function handleEdit() { deps.onEdit(); }
   backBtn.addEventListener("click", handleBack);
+  editBtn.addEventListener("click", handleEdit);
 
   // Listeners attached after async load — captured here so cleanup detaches them.
   let registerAnotherBtn = null;
@@ -71,15 +79,15 @@ export function renderKidProfileView(container, kidId, deps) {
     }
   })();
 
-  return function cleanup() {
+return function cleanup() {
     cancelled = true;
     backBtn.removeEventListener("click", handleBack);
+    editBtn.removeEventListener("click", handleEdit);
     if (registerAnotherBtn) {
       registerAnotherBtn.removeEventListener("click", handleRegisterAnother);
     }
   };
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Renderers
 // ─────────────────────────────────────────────────────────────────────────────
