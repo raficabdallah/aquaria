@@ -369,6 +369,25 @@ export const strings = {
     blockHistoryResolvedOn: "Unblocked on {date}.",
       registerAnother: "Register another kid",
 
+      // Family / siblings (§39.14)
+    familySectionTitle:      "Family",
+    familyLoading:           "Loading siblings…",
+    familyEmpty:             "No siblings linked yet.",
+    familyLinkButton:        "Link sibling",
+    familyUnlinkButton:      "Unlink",
+ 
+    confirmUnlinkTitle:      "Unlink this sibling?",
+    confirmUnlinkBody:       "{name} will no longer be linked to this kid as a sibling. You can re-link them at any time.",
+    confirmUnlinkConfirm:    "Unlink",
+ 
+    linkModalTitle:          "Link a sibling",
+    linkModalBody:           "Search for a kid to link. Linking will use a shared family ID; you can unlink at any time.",
+    linkModalSearchPlaceholder: "Type a name…",
+    linkModalLoading:        "Searching…",
+    linkModalNoResults:      "No matching kids.",
+    linkModalAlreadyInFamily: "Already in another family",
+    linkModalCancel:         "Close",
+
       // Sections
       sectionChild: "Child",
       sectionSchool: "School",
@@ -537,6 +556,8 @@ editLocks: {
     emailRequired: "Please enter your email.",
     passwordRequired: "Please enter your password.",
 
+    
+
     // Profile / role lookup
     profileNotFound: "Your account exists but has no profile in this playground. Contact your administrator.",
     profileInactive: "Your account is deactivated. Contact your administrator.",
@@ -582,7 +603,12 @@ editLocks: {
     notSignedIn: "Your session has ended. Please sign in again.",
     kidWriteFailed: "Could not save the kid. Please try again.",
     editForbidden:        "Only admins and super-admins can edit kid records.",
-
+    siblingsReadFailed:        "Could not load siblings. Please try again.",
+    siblingLinkFailed:         "Could not link this sibling. Please try again.",
+    siblingUnlinkFailed:       "Could not unlink this sibling. Please try again.",
+    siblingFamiliesConflict:   "These two kids are already in different families. Unlink one side first.",
+    siblingSameKid:            "A kid can't be their own sibling.",
+    siblingNotLinked:          "This kid isn't linked to a family yet.",
     blockReasonRequired:  "A reason is required when blocking a kid.",
     blockReasonTooLong:   "Block reason is too long (max 500 characters).",
     kidBlockFailed:       "Could not block this kid. Please try again.",
@@ -618,6 +644,8 @@ editLocks: {
     kidRestored:    "{name} restored.",
     photoReplaced:  "Photo updated.",
     photoRemoved:   "Photo removed.",
+    siblingLinked:    "Linked sibling: {name}.",
+    siblingUnlinked:  "Unlinked sibling: {name}.",
   }
 
 };

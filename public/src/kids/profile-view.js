@@ -26,6 +26,7 @@ import {
   canSoftDeleteKids
 } from "../auth/permissions.js";
 import { confirm } from "../ui/confirm.js";
+import { renderFamilySection } from "./family-section.js";
 import { onSnapshot, doc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import { db } from "../firebase-init.js";
 import { TENANT_ID } from "../config.js";
@@ -64,6 +65,7 @@ export function renderKidProfileView(container, kidId, profile, deps) {
   let currentKid = null;
   let unsubscribeKid = null;
   let cancelled = false;
+  const familyCleanupRef = { current: null };
 
   function detachActionHandlers() {
     for (const [el, evt, fn] of actionHandlers) {
@@ -125,6 +127,10 @@ export function renderKidProfileView(container, kidId, profile, deps) {
   // ── Renderers ──
   function renderNotFound() {
     detachActionHandlers();
+    if (familyCleanupRef.current) {
+      try { familyCleanupRef.current(); } catch (_) {}
+      familyCleanupRef.current = null;
+    }
     body.innerHTML = `
       <div class="aq-kid-profile__notfound">
         <h2 class="aq-card__title">${strings.kids.profile.notFoundTitle}</h2>
@@ -235,6 +241,15 @@ export function renderKidProfileView(container, kidId, profile, deps) {
       </div>
     `;
 
+    // Mount the Family section. It renders itself into a freshly-appended
+    // <section> inside `body`, so we don't need a placeholder in the
+    // template above. Cleanup is tracked alongside the existing
+    // actionHandlers via familyCleanupRef.
+    if (familyCleanupRef.current) {
+      try { familyCleanupRef.current(); } catch (_) {}
+    }
+    familyCleanupRef.current = renderFamilySection(body, kid.KidID, profile);
+
     // Wire action handlers.
     const editBtn       = body.querySelector("#aq-kid-edit");
     const blockBtn      = body.querySelector("#aq-kid-block");
@@ -327,13 +342,17 @@ export function renderKidProfileView(container, kidId, profile, deps) {
   }
 
   // ── Cleanup ──
-  return function cleanup() {
+ return function cleanup() {
     cancelled = true;
     backBtn.removeEventListener("click", handleBack);
     detachActionHandlers();
     if (unsubscribeKid) {
       try { unsubscribeKid(); } catch (_) {}
       unsubscribeKid = null;
+    }
+    if (familyCleanupRef.current) {
+      try { familyCleanupRef.current(); } catch (_) {}
+      familyCleanupRef.current = null;
     }
   };
 }

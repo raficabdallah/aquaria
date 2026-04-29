@@ -76,6 +76,14 @@
         { "fieldPath": "Status",    "order": "ASCENDING" },
         { "fieldPath": "SearchKey", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "kids",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "FamilyID", "order": "ASCENDING" },
+        { "fieldPath": "Deleted",  "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

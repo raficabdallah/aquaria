@@ -3088,5 +3088,97 @@ friction proves too high we can loosen later — easier than tightening.
 - Errors viewer in Admin Panel (the writer is in place since §39.8;
   reader is overdue).
 
+### §39.14 — 2026-04-29 — Sibling linking
+
+**Goal:** Implement sibling linking per §9.7 — kids who share a FamilyID
+are siblings. UI to view, link, and unlink siblings from the kid profile.
+
+**Permission model (per §39.14):**
+
+| Action          | Operator | Admin | SuperAdmin |
+|-----------------|----------|-------|------------|
+| View siblings   | ✅       | ✅    | ✅         |
+| Link sibling    | ✅       | ✅    | ✅         |
+| Unlink sibling  | ❌       | ✅    | ✅         |
+
+Linking is non-destructive (reversible, no data loss), so any tenant
+member can link. Unlinking is gated to Admin+ — same gate as canEditKids.
+
+**Linking semantics (encoded in family-service.linkSibling):**
+- Neither kid has FamilyID → generate fresh ID, assign to both.
+- One kid has FamilyID → other joins that family.
+- Both have SAME FamilyID → no-op.
+- Both have DIFFERENT FamilyIDs → REJECTED (errorKey
+  "siblingFamiliesConflict"). Merging two existing families is dangerous
+  because it could affect 4+ kids silently. User must unlink one side
+  first.
+
+**Unlink auto-detach rule:** if unlinking a kid would leave exactly one
+other kid in the family, that kid is also detached. A family of one isn't
+a family. Implemented in unlinkSibling — does an out-of-transaction query
+to count siblings, then detaches both inside the transaction.
+
+**Files added:**
+- `public/src/kids/family-service.js` — getSiblings, linkSibling,
+  unlinkSibling, searchKidsByName. linkSibling and unlinkSibling use
+  Firestore transactions for read-modify-write safety. Field-set
+  discipline: only writes FamilyID + UpdatedAt + UpdatedBy. Disjoint
+  from updateKid, blockKid, etc — concurrent edits + sibling changes
+  cannot corrupt each other.
+- `public/src/kids/family-section.js` — the Family section rendered on
+  the profile page. Self-mounting: profile-view calls
+  renderFamilySection(body, kidId, profile) and gets back a cleanup fn.
+  Lists siblings with thumb + name + status pill; rows are clickable to
+  navigate to that sibling's profile. Each row has a gated Unlink
+  button (Admin+).
+- `public/src/kids/link-sibling-modal.js` — search-and-pick modal.
+  Debounced (220ms) prefix search via SearchKey. Excludes self + already-
+  linked siblings from results. Returns Promise<picked|null>.
+
+**Files modified:**
+- `public/src/kids/profile-view.js` — five small edits: import
+  renderFamilySection, declare familyCleanupRef, mount the section
+  inside renderProfile, tear it down in cleanup() and renderNotFound().
+  No behavioral change to existing profile rendering.
+- `public/src/strings/en.js` — added kids.profile.familySectionTitle/
+  familyLoading/familyEmpty/familyLinkButton/familyUnlinkButton,
+  confirmUnlinkTitle/Body/Confirm, linkModal* search-modal copy,
+  toast.siblingLinked/siblingUnlinked, errors.siblingsReadFailed +
+  5 new sibling error keys.
+- `firestore.indexes.json` — added FamilyID+Deleted composite index for
+  the getSiblings query path.
+
+**Tested behaviors (all green):**
+1. Link two unlinked kids → shared FamilyID created, both profiles
+   show each other. Persists across refresh.
+2. Unlink → bidirectional detach (auto-detach orphan rule fires when
+   only one other sibling remains in the family).
+3. Three-sibling family: third kid joins existing family without
+   generating a new FamilyID.
+4. Conflict: linking two kids who are each already in DIFFERENT
+   families is rejected with the "already in different families" toast.
+
+**Tested-but-deferred:**
+- Operator linking + Admin unlinking gates not exercised end-to-end —
+  only one SuperAdmin user exists in dev. The pure-function checks in
+  permissions.js are simple enough to trust until an Operator/Admin user
+  exists for smoke testing.
+
+**Known issues (deferred):**
+- Server-side rule enforcement for kids.FamilyID writes is intent-only,
+  same as edit-locks (§39.11) and destructive actions (§39.13). Catch-
+  all rule still ORs. Hardening pass is its own session.
+- Sibling search is prefix-by-FullName-SearchKey only — same limitation
+  as the kids-list search (§39.10). If the user types "khoury" it won't
+  find "Maya Khoury". Acceptable; staff search by first name in practice.
+- The link modal's "Already in another family" hint is purely
+  informational — it doesn't pre-block the pick. The service layer
+  rejects with siblingFamiliesConflict if needed. Decision: avoid a
+  second Firestore lookup at modal time; service is source of truth.
+
+**Next session(s):**
+- Subscriptions module per §15.
+- Errors viewer in Admin Panel (writer in place since §39.8).
+- Catch-all Firestore rules tightening + Operator/Admin smoke tests.
 
 **END OF MASTER PROMPT v6.2**
