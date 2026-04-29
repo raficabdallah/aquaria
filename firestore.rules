@@ -7,17 +7,14 @@ service cloud.firestore {
     // Helper functions
     // ─────────────────────────────────────────────────────────────────────
 
-    // True if the request is authenticated.
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // The path to the requesting user's profile document in the given tenant.
     function userDocPath(tenantId) {
       return /databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid);
     }
 
-    // True if the user has a profile in this tenant AND is Active (or Active is missing — defaults to true).
     function hasProfile(tenantId) {
       return isSignedIn()
           && exists(userDocPath(tenantId))
@@ -27,12 +24,10 @@ service cloud.firestore {
             );
     }
 
-    // The user's role in this tenant. Returns null if no profile.
     function getRole(tenantId) {
       return hasProfile(tenantId) ? get(userDocPath(tenantId)).data.Role : null;
     }
 
-    // True if the user has any of the given roles in this tenant.
     function hasRole(tenantId, roles) {
       return getRole(tenantId) in roles;
     }
@@ -43,34 +38,24 @@ service cloud.firestore {
 
     match /tenants/{tenantId} {
 
-      // The tenant root document itself: anyone with a profile can read; only SuperAdmin can write.
       allow read:  if hasProfile(tenantId);
       allow write: if hasRole(tenantId, ['SuperAdmin']);
 
-      // Edit locks (§13). One doc per locked record (kid, subscription, etc).
+      // Edit locks (§13).
       // Note for future hardening: while the catch-all `match /{collection}/{document=**}`
       // below grants tenant members general read/write, it OR's with these rules — so
       // these strict checks are not yet defense-in-depth. They become effective once
-      // the catch-all is tightened in a later session. They also serve as the
-      // documented intent for this collection's security model.
+      // the catch-all is tightened in a later session.
       match /editLocks/{lockKey} {
-        // Anyone signed in to this tenant can READ a lock doc.
-        // Necessary so the "locked by other staff" banner can render.
         allow read: if hasProfile(tenantId);
 
-        // CREATE: requester must be a tenant member, and the new doc's LockedBy
-        // must match their own uid. (You can only acquire a lock for yourself.)
         allow create: if hasProfile(tenantId)
                       && request.resource.data.LockedBy == request.auth.uid;
 
-        // UPDATE: only the current lock holder, and they cannot change LockedBy
-        // (no hijacking via update — only LastActivityAt / ExpiresAt refreshes).
         allow update: if hasProfile(tenantId)
                       && resource.data.LockedBy == request.auth.uid
                       && request.resource.data.LockedBy == resource.data.LockedBy;
 
-        // DELETE: by the holder (Save/Cancel), by anyone if expired (reclaim
-        // path), or by any SuperAdmin (force-release for support).
         allow delete: if hasProfile(tenantId)
                       && (
                            resource.data.LockedBy == request.auth.uid
@@ -79,10 +64,28 @@ service cloud.firestore {
                          );
       }
 
-      // Users collection — staff accounts.
-      // A user MUST be able to read their OWN profile even if Active is false,
-      // otherwise they can't see the "your account is deactivated" error.
-      // SuperAdmin can read/write any profile.
+      // Kids collection (§39.13 permission tightening).
+      // Same caveat as editLocks above: catch-all OR's with these rules until
+      // catch-all is tightened in a future session. Documents the intended
+      // server-side enforcement.
+      match /kids/{kidId} {
+        // Read: any tenant member.
+        allow read: if hasProfile(tenantId);
+
+        // Create: any tenant member (Operator, Admin, SuperAdmin) — desk
+        // staff registers new kids.
+        allow create: if hasRole(tenantId, ['Operator', 'Admin', 'SuperAdmin']);
+
+        // Update: Admin or SuperAdmin only. Operators cannot edit, block,
+        // unblock, replace photos, or soft-delete. (Soft-delete uses an
+        // update to set Deleted=true, so it falls under this rule too —
+        // additional UI-side gate enforces SuperAdmin-only on soft-delete.)
+        allow update: if hasRole(tenantId, ['Admin', 'SuperAdmin']);
+
+        // Hard-delete: forbidden. Soft-delete via the update rule above.
+        allow delete: if false;
+      }
+
       match /users/{userId} {
         allow read:  if isSignedIn()
                        && (request.auth.uid == userId
@@ -90,13 +93,11 @@ service cloud.firestore {
         allow write: if hasRole(tenantId, ['SuperAdmin']);
       }
 
-      // Settings — SuperAdmin only for writes; any profile can read.
       match /settings/{settingKey} {
         allow read:  if hasProfile(tenantId);
         allow write: if hasRole(tenantId, ['SuperAdmin']);
       }
 
-      // Financial events — append-only ledger. Immutable per §27.
       match /financialEvents/{finId} {
         allow read:   if hasRole(tenantId, ['SuperAdmin']);
         allow create: if hasRole(tenantId, ['Operator', 'Admin', 'SuperAdmin']);
@@ -104,7 +105,6 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      // Loyalty ledger — append-only. Immutable per §27.
       match /loyaltyLedger/{ledgerId} {
         allow read:   if hasProfile(tenantId);
         allow create: if hasRole(tenantId, ['Operator', 'Admin', 'SuperAdmin']);
@@ -112,7 +112,6 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      // Audit log — append-only. Immutable per §27.
       match /audit/{logId} {
         allow read:   if hasRole(tenantId, ['Admin', 'SuperAdmin']);
         allow create: if hasProfile(tenantId);
@@ -128,9 +127,6 @@ service cloud.firestore {
       }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Default deny — anything outside /tenants/{tenantId}/... is forbidden.
-    // ─────────────────────────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }
