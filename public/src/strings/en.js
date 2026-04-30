@@ -30,7 +30,8 @@ export const strings = {
     role: "Role: {role}",
     logoutButton: "Sign out",
     loadingProfile: "Loading your account…",
-    navKids: "Kids"
+    navKids: "Kids",
+    navErrors: "Errors"
   },
 
   dashboard: {
@@ -430,6 +431,35 @@ export const strings = {
     }
   },
 
+  errorsViewer: {
+    pageTitle:           "Errors",
+    backButton:          "Back to dashboard",
+ 
+    forbiddenTitle:      "SuperAdmin only",
+    forbiddenBody:       "The errors viewer is restricted to SuperAdmins.",
+ 
+    filterSource:        "Source",
+    filterRange:         "Time range",
+    refreshButton:       "Refresh",
+ 
+    sourceFrontend:       "Frontend",
+    sourceCloudFunction:  "Cloud function",
+ 
+    loading:             "Loading…",
+    loadingMore:         "Loading more…",
+    loadMore:            "Load more",
+    endOfList:           "No more errors in this range.",
+    empty:               "No errors recorded for these filters.",
+ 
+    countLine:           "{count} errors loaded",
+ 
+    detailUser:          "User ID",
+    detailStack:         "Stack",
+    detailContext:       "Context",
+    none:                "—"
+  },
+
+
   // Developer-only tools, gated to dev project + SuperAdmin role at runtime.
   // These strings are shown only on the dev project and never reach end users.
   devTools: {
@@ -555,6 +585,8 @@ editLocks: {
     accountDisabled: "This account has been deactivated. Contact your administrator.",
     emailRequired: "Please enter your email.",
     passwordRequired: "Please enter your password.",
+    errorsListLoadFailed:  "Could not load the errors list. Please try again.",
+    errorsForbidden:       "The errors viewer is restricted to SuperAdmins.",
 
     
 

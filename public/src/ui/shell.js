@@ -35,9 +35,11 @@ import { renderRegisterKidView } from "../kids/register-view.js";
 import { renderKidProfileView } from "../kids/profile-view.js";
 import { renderEditKidView } from "../kids/edit-view.js";
 import { renderKidsListView } from "../kids/kids-list-view.js";
+import { renderErrorsViewerView } from "../admin/errors-viewer-view.js";
 import { renderDevToolsSection } from "../dev/dev-tools-section.js";
 import { strings } from "../strings/en.js";
 import { showToast } from "./toast.js";
+import { isSuperAdmin } from "../auth/permissions.js";
 
 let currentViewCleanup = null;
 let currentPageCleanup = null;
@@ -237,6 +239,23 @@ if (kidMatch) {
   return;
 }
 
+if (path === "#/admin/errors") {
+    if (!isSuperAdmin(signedInProfile)) {
+      // Defensive: non-SuperAdmins shouldn't reach this URL via the UI
+      // (the nav button is hidden), but a typed URL or a stale link
+      // shouldn't crash. Toast + bounce to dashboard.
+      showToast(strings.errors.errorsForbidden, "error");
+      navigateTo("#/dashboard");
+      return;
+    }
+    setActiveNav("admin");
+    currentPageCleanup = renderErrorsViewerView(pageMount, signedInProfile, {
+      onBack: () => navigateTo("#/dashboard")
+    });
+    return;
+  }
+
+
   setActiveNav(null);
   renderDashboardPlaceholder(pageMount);
 }
@@ -303,10 +322,15 @@ function renderSignedInLayout() {
       <header class="aq-header">
         <a class="aq-header__brand" href="#/dashboard">${strings.app.name}</a>
 
-        <nav class="aq-nav">
+       <nav class="aq-nav">
           <a class="aq-nav__btn" data-nav-key="kids" href="#/kids">
             ${strings.shell.navKids}
           </a>
+          ${isSuperAdmin(profile) ? `
+            <a class="aq-nav__btn" data-nav-key="admin" href="#/admin/errors">
+              ${strings.shell.navErrors}
+            </a>
+          ` : ""}
         </nav>
 
         <div class="aq-header__user">

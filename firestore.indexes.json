@@ -84,6 +84,14 @@
         { "fieldPath": "FamilyID", "order": "ASCENDING" },
         { "fieldPath": "Deleted",  "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "errors",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "Source",    "order": "ASCENDING" },
+        { "fieldPath": "Timestamp", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
