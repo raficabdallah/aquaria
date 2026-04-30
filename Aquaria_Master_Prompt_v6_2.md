@@ -3181,4 +3181,105 @@ to count siblings, then detaches both inside the transaction.
 - Errors viewer in Admin Panel (writer in place since §39.8).
 - Catch-all Firestore rules tightening + Operator/Admin smoke tests.
 
+### §39.15 — 2026-04-30 — Errors viewer (admin panel reader)
+
+**Goal:** Build the SuperAdmin reader for the `errors/` collection. The
+writer (`logError`) has been in place since §39.8; the reader was overdue
+across five sessions. Useful for cross-session debugging — the kind of
+"what blew up yesterday" question that previously required opening the
+Firestore console.
+
+**Permission model:**
+- View errors viewer: SuperAdmin only.
+- Header nav button "Errors" rendered only for SuperAdmin.
+- Route `#/admin/errors` defensively re-checks via `isSuperAdmin(profile)`
+  in shell.js — non-SuperAdmins typing the URL get a toast and bounce to
+  the dashboard.
+- The view itself ALSO re-checks (third defense layer) and renders a
+  "SuperAdmin only" card if reached without the role.
+
+**Data layer:**
+- `public/src/admin/errors-viewer-service.js` — `listErrors({ source,
+  sinceMillis, before, pageSize })`. Cursor-based pagination via
+  Firestore DocumentSnapshot. orderBy(Timestamp, "desc") — newest first.
+  Page size default 25, capped at 100.
+- Filters: source (`frontend` / `cloud_function` / `all`) and time range
+  (24h / 7d / 30d / all).
+- If listErrors itself throws, the service calls logError to record the
+  failure (no infinite loop because the addDoc is in a try/catch that
+  console.errors on second-failure rather than re-recursing).
+
+**View layer:**
+- `public/src/admin/errors-viewer-view.js` — table-style list with row
+  expand-on-click. Collapsed row shows: timestamp, source chip, page,
+  action, truncated message. Expanded row adds: UserID, full Stack
+  (already truncated to 2KB by the writer), Context (also 2KB).
+- "Load more" button at the bottom shows when current page is exactly
+  PAGE_SIZE — same heuristic as kids-list. "End of list" when fewer.
+- Refresh button forces a fresh first-page load. Filter changes also
+  trigger a fresh first-page load.
+- Pre-existing styles for `.aq-card`, `.aq-button`, `.aq-page` reused;
+  new styles namespaced under `.aq-errv__*`.
+
+**Files added:**
+- `public/src/admin/errors-viewer-service.js`
+- `public/src/admin/errors-viewer-view.js`
+- (New folder: `public/src/admin/`)
+
+**Files modified:**
+- `public/src/ui/shell.js` — imported renderErrorsViewerView and
+  isSuperAdmin. Added `#/admin/errors` route handler with role gate +
+  bounce. Added "Errors" nav button to header (SuperAdmin-only).
+- `public/src/strings/en.js` — added `shell.navErrors`. Added new
+  top-level `errorsViewer` block (filter labels, source labels, button
+  labels, detail labels, empty/end states). Added two error keys:
+  `errorsListLoadFailed` and `errorsForbidden`.
+- `firestore.indexes.json` — added `errors` collection index on
+  `Source ASC + Timestamp DESC` for the source-filter query path.
+
+**Tested behaviors (all green):**
+1. Errors nav button appears for SuperAdmin only.
+2. Default load shows last 24 hours, frontend + cloud_function combined.
+3. Time range switches (24h → 30d → all) re-query correctly.
+4. Source switches (All → Frontend → Cloud function) re-query correctly;
+   Cloud function shows empty state ("No errors recorded for these
+   filters") since no Cloud Functions are running yet.
+5. Refresh button reloads from scratch.
+6. Row click expands to show UserID + Stack + Context. Re-click collapses.
+
+**Found bugs from real data (during testing):**
+- The viewer surfaced six `kids/list listenerError` entries from the
+  prior session. Initial concern: the kids-list query is missing a
+  composite index. Investigation: clicking the auto-suggested
+  Firebase console URL revealed "No indexes to be created" — the
+  Status+SearchKey index already exists. Conclusion: those six errors
+  were logged DURING the §39.13 testing session, when the listener
+  attached before the index finished building. The errors are
+  historical artifacts, not active bugs. Decision: leave them in
+  place; they age out of the 24h window naturally. Future session
+  may add a "delete error" or "delete errors older than N days" action.
+
+**Known issues (deferred):**
+- No live tail. If a new error is logged while the viewer is open, the
+  user must hit Refresh to see it. Acceptable for v1; the use case is
+  retrospective debugging, not real-time monitoring.
+- Clicking the long error-link URL inside an expanded row toggles the
+  row expand/collapse instead of opening the link, because the click
+  handler is bound to the whole row. Awkward but not blocking — workaround
+  is right-click → Open in new tab. Future polish: stopPropagation on
+  links inside the detail block.
+- No filter by user, page, or action substring. The dataset is small
+  enough today that scrolling is fine. Add when it becomes painful.
+- Server-side rule for `errors/` reads is intent-only — the catch-all
+  rule (`match /{collection}/{document=**}`) still grants any tenant
+  member read access. Hardening pass deferred to the catch-all
+  tightening session.
+
+**Next session(s):**
+- Subscriptions module (§15) — biggest remaining functional gap. New
+  collection per kid; impacts §9.6 step 7 of check-in, plus §25 admin
+  CRUD.
+- Catch-all Firestore rules tightening + Operator/Admin smoke tests.
+- School/grade catalog management.
+
 **END OF MASTER PROMPT v6.2**
